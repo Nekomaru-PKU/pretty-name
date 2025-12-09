@@ -10,18 +10,18 @@ use syn::*;
 /// assert_eq!(type_name::<&str>(), "&str");
 /// assert_eq!(type_name::<Vec<Box<dyn std::fmt::Debug>>>(), "Vec<Box<dyn Debug>>");
 /// ```
-pub fn type_name<T: ?Sized + 'static>() -> &'static str {
-    use std::any::TypeId;
+pub fn type_name<T: ?Sized>() -> &'static str {
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::collections::hash_map::Entry;
 
     thread_local! {
-        static TYPE_NAME_CACHE: RefCell<HashMap<TypeId, &'static str>> =
+        static TYPE_NAME_CACHE: RefCell<HashMap<&'static str, &'static str>> =
             RefCell::new(HashMap::new());
     }
 
-    TYPE_NAME_CACHE.with_borrow_mut(|cache| match cache.entry(TypeId::of::<T>()) {
+    let full_name = std::any::type_name::<T>();
+    TYPE_NAME_CACHE.with_borrow_mut(|cache| match cache.entry(full_name) {
         Entry::Occupied(entry) =>
             *entry.get(),
         Entry::Vacant(entry) =>
@@ -32,17 +32,21 @@ pub fn type_name<T: ?Sized + 'static>() -> &'static str {
 /// Get the human-friendly type name of the given value, removing visual clutter such as
 /// full module paths.
 /// 
+/// Note that even if the value is a reference, you should pass a reference to it to get
+/// the correct type name.
+/// 
 /// # Examples
 /// ```rust
 /// use pretty_name::type_name_of_val;
 /// let value = vec![1, 2, 3];
 /// assert_eq!(type_name_of_val(&value), "Vec<i32>");
+/// assert_eq!(type_name_of_val(&value.as_slice()), "&[i32]");
 /// ```
-pub fn type_name_of_val<T: ?Sized + 'static>(_: &T) -> &'static str {
+pub fn type_name_of_val<T: ?Sized>(_: &T) -> &'static str {
     type_name::<T>()
 }
 
-fn type_name_internal<T: ?Sized + 'static>() -> &'static str {
+fn type_name_internal<T: ?Sized>() -> &'static str {
     let type_name = std::any::type_name::<T>();
     let Ok(mut ty) = syn::parse_str::<Type>(type_name) else {
         return "<error>";
