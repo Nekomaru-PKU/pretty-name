@@ -7,21 +7,18 @@ pub use type_name::type_name_of_val;
 /// Internal helper macro for caching string results in thread-local storage.
 ///
 /// This macro wraps an expression that produces a `String` and caches it as a
-/// `&'static str` using thread-local `LazyCell`. Each unique macro invocation
+/// `&'static str` using thread-local `OnceCell`. Each unique macro invocation
 /// gets its own cache entry, ensuring zero runtime overhead after first use.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __with_cache {
     ($expr:expr) => {{
-        use std::cell::LazyCell;
-        thread_local! {
-            static CACHE: LazyCell<&'static str> =
-                LazyCell::new(|| {
-                    let result = $expr;
-                    Box::leak(result.into_boxed_str())
-                });
-        }
-        CACHE.with(|cell| *LazyCell::force(cell))
+        use std::cell::OnceCell;
+        thread_local!(static CACHE: OnceCell<&'static str> = OnceCell::new());
+        CACHE.with(|cell| *cell.get_or_init(|| {
+            let result = $expr;
+            Box::leak(result.into_boxed_str())
+        }))
     }};
 }
 
@@ -298,4 +295,21 @@ macro_rules! of_variant {
         $crate::__with_cache!(
             format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($variant)))
     }};
+}
+
+#[test] fn test_self() {
+    struct MyStruct {
+        my_field: u32,
+    }
+    impl MyStruct {
+        fn my_method<T>(&self) {}
+        fn test(&self) {
+            assert_eq!(of_type!(Self), "MyStruct");
+            assert_eq!(of_field!(Self::my_field), "MyStruct::my_field");
+            assert_eq!(of_method!(Self::my_method::<u32>), "MyStruct::my_method::<u32>");
+        }
+    }
+
+    let my_struct = MyStruct { my_field: 42 };
+    my_struct.test();
 }
