@@ -32,7 +32,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-pretty-name = "0.4"
+pretty-name = "0.4.1"
 ```
 
 Or use `cargo add`:
@@ -43,7 +43,7 @@ cargo add pretty-name
 
 ## Usage
 
-All functions and macros return `&'static str` with caching for zero runtime overhead on subsequent calls.
+All functions and macros listed below yield `&'static str`.
 
 | What to get | Syntax | Example |
 |-------------|--------|---------|
@@ -75,8 +75,15 @@ All functions and macros return `&'static str` with caching for zero runtime ove
 | Variant (on qualified type) | `pretty_name::of_variant!(<Type>::Variant)` | `pretty_name::of_variant!(<MyEnum<T>>::Variant)` → `"<MyEnum<T>>::Variant"` |
 
 **Notes:**
-- Macros resolve `Self` to the appropriate type when used inside `impl` blocks
-- Use `<Type>` syntax for types with qualified paths or generic parameters
+- Macros resolve `Self` to the appropriate type when used inside `impl` blocks.
+- Use `<Type>` syntax for types with qualified paths or generic parameters.
+
+**To Get a String Literal:**
+Each of the macros listed above may yield a string literal:
+- `pretty_name::of_var!(var)` always yields a string literal.
+- `pretty_name::of_function!(function)`: If *function* contains a single identifier.
+- `pretty_name::of_method(Type::method)`: If *Type* and *method* both contain a single identifier.
+- `pretty_name::of_field(Type::field)` and `pretty_name::of_variant(Type::Variant | Type::Variant(..) | Type::Variant {..} )`: If *Type* contains a single identifier.
 
 ## License
 
