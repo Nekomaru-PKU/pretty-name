@@ -22,6 +22,8 @@ Get the human-friendly name of types, functions, methods, fields, and enum varia
 
 - **Catch typos at compile time**: Every referenced item is validated. Misspelled identifiers, fields, methods, or variants trigger compile errors instead of runtime failures.
 
+- **Evaluation at compile time** for common cases: Macros yield generated string literals generated at compile time for simple and mostly used cases-No runtime cost at all.
+
 - **Natural, idiomatic syntax**: All syntax follows Rust conventions as closely as possible, making the macros feel like native language features.
 
 - **Thread-local caching**: All functions and macros cache their result in thread-local storage. Subsequent calls have zero runtime overhead.

@@ -141,7 +141,7 @@ macro_rules! of_type {
 #[macro_export]
 macro_rules! of_field {
     (Self:: $field:ident) => {{
-        let _ = |obj: $ty| { let _ = &obj.$field; };
+        let _ = |obj: Self| { let _ = &obj.$field; };
         $crate::__with_cache!(
             format!("{}::{}", $crate::type_name::<Self>(), stringify!($field)))
     }};
@@ -191,7 +191,7 @@ macro_rules! of_field {
 #[macro_export]
 macro_rules! of_method {
     (Self:: $method:ident) => {{
-        let _ = &$ty::$method;
+        let _ = &Self::$method;
         $crate::__with_cache!(
             format!("{}::{}", $crate::type_name::<Self>(), stringify!($method)))
     }};
@@ -255,46 +255,46 @@ macro_rules! of_method {
 #[macro_export]
 macro_rules! of_variant {
     (Self:: $variant:ident) => {{
-        let _ = |obj| match obj { Self::$variant => {}, _ => {} };
+        let _ = |obj: Self| match obj { Self::$variant => {}, _ => {} };
         $crate::__with_cache!(
             format!("{}::{}", $crate::type_name::<Self>(), stringify!($variant)))
     }};
     (Self:: $variant:ident (..)) => {{
-        let _ = |obj| match obj { Self::$variant(..) => {}, _ => {} };
+        let _ = |obj: Self| match obj { Self::$variant(..) => {}, _ => {} };
         $crate::__with_cache!(
             format!("{}::{}", $crate::type_name::<Self>(), stringify!($variant)))
     }};
     (Self:: $variant:ident {..}) => {{
-        let _ = |obj| match obj { Self::$variant { .. } => {}, _ => {} };
+        let _ = |obj: Self| match obj { Self::$variant { .. } => {}, _ => {} };
         $crate::__with_cache!(
             format!("{}::{}", $crate::type_name::<Self>(), stringify!($variant)))
     }};
 
     ($ty:ident :: $variant:ident) => {{
-        let _ = |obj| match obj { $ty::$variant => {}, _ => {} };
+        let _ = |obj: $ty| match obj { $ty::$variant => {}, _ => {} };
         concat!(stringify!($ty), "::", stringify!($variant))
     }};
     ($ty:ident :: $variant:ident (..)) => {{
-        let _ = |obj| match obj { $ty::$variant(..) => {}, _ => {} };
+        let _ = |obj: $ty| match obj { $ty::$variant(..) => {}, _ => {} };
         concat!(stringify!($ty), "::", stringify!($variant))
     }};
     ($ty:ident :: $variant:ident {..}) => {{
-        let _ = |obj| match obj { $ty::$variant { .. } => {}, _ => {} };
+        let _ = |obj: $ty| match obj { $ty::$variant { .. } => {}, _ => {} };
         concat!(stringify!($ty), "::", stringify!($variant))
     }};
 
     (<$ty:ty> :: $variant:ident) => {{
-        let _ = |obj| match obj { <$ty>::$variant => {}, _ => {} };
+        let _ = |obj: $ty| match obj { <$ty>::$variant => {}, _ => {} };
         $crate::__with_cache!(
             format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($variant)))
     }};
     (<$ty:ty> :: $variant:ident (..)) => {{
-        let _ = |obj| match obj { <$ty>::$variant(..) => {}, _ => {} };
+        let _ = |obj: $ty| match obj { <$ty>::$variant(..) => {}, _ => {} };
         $crate::__with_cache!(
             format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($variant)))
     }};
     (<$ty:ty> :: $variant:ident {..}) => {{
-        let _ = |obj| match obj { <$ty>::$variant { .. } => {}, _ => {} };
+        let _ = |obj: $ty| match obj { <$ty>::$variant { .. } => {}, _ => {} };
         $crate::__with_cache!(
             format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($variant)))
     }};
