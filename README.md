@@ -45,10 +45,10 @@ cargo add pretty-name
 
 ### Type Names
 
-Get human-friendly type names with `pretty_name::type_name<T>()` for types and `pretty_name::type_name_of(value)` for values:
+Get human-friendly type names with `pretty_name::type_name<T>()` for types and `pretty_name::type_name_of_val(value)` for values:
 
 ```rust
-use pretty_name::{type_name, type_name_of};
+use pretty_name::{type_name, type_name_of_val};
 
 // Get type name from a type parameter
 assert_eq!(type_name::<Option<i32>>(), "Option<i32>");
@@ -57,10 +57,10 @@ assert_eq!(type_name::<Vec<Box<dyn std::fmt::Debug>>>(), "Vec<Box<dyn Debug>>");
 
 // Get type name from a value
 let s = "hello";
-assert_eq!(type_name_of(&s), "&str");
+assert_eq!(type_name_of_val(&s), "&str");
 
 let v = vec![1, 2, 3];
-assert_eq!(type_name_of(&v), "Vec<i32>");
+assert_eq!(type_name_of_val(&v), "Vec<i32>");
 ```
 
 The output removes module paths (e.g., `std::vec::Vec` becomes `Vec`) and lifetime annotations for cleaner, more readable type names.

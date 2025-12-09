@@ -1,21 +1,8 @@
 #![doc = include_str!("../README.md")]
 
 mod type_name;
-
 pub use type_name::type_name;
-
-/// Get the human-friendly type name of the given value, removing visual clutter such as
-/// full module paths.
-/// 
-/// # Examples
-/// ```rust
-/// use pretty_name::type_name_of;
-/// let value = vec![1, 2, 3];
-/// assert_eq!(type_name_of(&value), "Vec<i32>");
-/// ```
-pub fn type_name_of<T: ?Sized>(_: &T) -> String {
-    type_name::<T>()
-}
+pub use type_name::type_name_of_val;
 
 /// Get the name of the given identifier.
 /// 

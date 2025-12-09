@@ -10,21 +10,51 @@ use syn::*;
 /// assert_eq!(type_name::<&str>(), "&str");
 /// assert_eq!(type_name::<Vec<Box<dyn std::fmt::Debug>>>(), "Vec<Box<dyn Debug>>");
 /// ```
-pub fn type_name<T: ?Sized>() -> String {
-    let Ok(mut ty) = syn::parse_str::<Type>(std::any::type_name::<T>()) else {
-        return "<error>".to_string();
-    };
+pub fn type_name<T: ?Sized + 'static>() -> String {
+    use std::any::TypeId;
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    use std::collections::hash_map::Entry;
 
-    truncate_type(&mut ty);
+    thread_local!(
+        static TYPE_NAME_CACHE: RefCell<HashMap<TypeId, String>> =
+            RefCell::new(HashMap::new()));
 
-    use quote::quote;
-    use rust_format::Formatter as _;
-    let s = rust_format::RustFmt::default()
-        .format_tokens(quote!(fn main() -> #ty {}))
-        .unwrap_or("<error>".to_string());
-    let start = const { "fn main() -> ".len() };
-    let end = s.len() - const { " {}\r\n".len() };
-    s[start..end].to_owned()
+    TYPE_NAME_CACHE.with_borrow_mut(|cache| match cache.entry(TypeId::of::<T>()) {
+        Entry::Occupied(entry) =>
+            entry.get().clone(),
+        Entry::Vacant(entry) =>
+            entry.insert(match syn::parse_str::<Type>(std::any::type_name::<T>()) {
+                Ok(mut ty) => {
+                    truncate_type(&mut ty);
+
+                    // Use rustfmt to get a nicely formatted type string.
+                    // rustfmt only accepts full source files, so we wrap the type in a dummy function.
+                    use quote::quote;
+                    use rust_format::Formatter as _;
+                    let format_result = rust_format::RustFmt::default()
+                        .format_tokens(quote!(fn main() -> #ty {}))
+                        .unwrap_or("<error>".to_string());
+                    let start = const { "fn main() -> ".len() };
+                    let end = format_result.len() - const { " {}\r\n".len() };
+                    format_result[start..end].to_owned()
+                },
+                Err(_) => "<error>".to_owned(),
+            }).clone(),
+    })
+}
+
+/// Get the human-friendly type name of the given value, removing visual clutter such as
+/// full module paths.
+/// 
+/// # Examples
+/// ```rust
+/// use pretty_name::type_name_of_val;
+/// let value = vec![1, 2, 3];
+/// assert_eq!(type_name_of_val(&value), "Vec<i32>");
+/// ```
+pub fn type_name_of_val<T: ?Sized + 'static>(_: &T) -> String {
+    type_name::<T>()
 }
 
 fn truncate_type(ty: &mut Type) {
