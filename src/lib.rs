@@ -45,15 +45,9 @@ macro_rules! of_var {
     }};
 }
 
-/// Get the name of the given function.
+/// Get the name of the given function as a `&'static str`.
 ///
-/// Use `::<..>` syntax to exclude generic parameters in the output, see examples.
-///
-/// This macro returns `&'static str`. It caches the result and subsequent calls have
-/// zero runtime overhead.
-///
-/// This macro checks that the identifier is valid in the current scope. If the identifier
-/// is renamed via refactoring tools, the macro call will be updated accordingly.
+/// Use a `::<..>` placeholder to exclude generic parameters in the output, see examples.
 /// 
 /// # Examples
 /// ```rust
@@ -93,19 +87,13 @@ macro_rules! of_function {
     }};
 }
 
-/// Get the name of the given struct field like `Type::field` as `&'static str`.
-///
-/// This macro returns `&'static str`. It caches the result and subsequent calls have
-/// zero runtime overhead.
+/// Get the name of the given struct field like `Type::field` as a `&'static str`.
 ///
 /// This macro resolves `Self` to the appropriate type when used inside an `impl` block.
 ///
 /// By default, this macro expects a simple type identifier like `Type::field`. To use
 /// types with qualified path or generic parameters, wrap the type in angle brackets
 /// like `<Type<T>>::field` or `<module::Type>::field`.
-///
-/// This macro checks that the field exists on the given type. If either the type or field
-/// is renamed via refactoring tools, the macro call will be updated accordingly.
 /// 
 /// # Examples
 /// ```rust
@@ -132,10 +120,7 @@ macro_rules! of_field {
     }};
 }
 
-/// Get the name of the given method as `&'static str`.
-///
-/// This macro returns `&'static str`. It caches the result and subsequent calls have
-/// zero runtime overhead.
+/// Get the name of the given method as a `&'static str`.
 ///
 /// This macro resolves `Self` to the appropriate type when used inside an `impl` block.
 ///
@@ -143,11 +128,8 @@ macro_rules! of_field {
 /// types with qualified path or generic parameters, wrap the type in angle brackets
 /// like `<Type<T>>::field` or `<module::Type>::field`.
 ///
-/// This macro checks that the method exists on the given type. If either the type or method
-/// is renamed via refactoring tools, the macro call will be updated accordingly.
-///
-/// Due to implementation limitations, you cannot use `::<..>` syntax to exclude generic
-/// parameters. Use explicit type arguments instead.
+/// Due to implementation limitations, you cannot use the `::<..>` placeholder to exclude
+/// generic parameters. Use explicit type arguments instead.
 /// 
 /// # Examples
 /// ```rust
@@ -199,22 +181,17 @@ macro_rules! of_method {
     }};
 }
 
-/// Get the name of the given enum variant as `&'static str`.
-///
-/// This macro returns `&'static str`. It caches the result and subsequent calls have
-/// zero runtime overhead.
+/// Get the name of the given enum variant as a `&'static str`.
 ///
 /// This macro resolves `Self` to the appropriate type when used inside an `impl` block.
 ///
 /// This macros supports both unit variants, tuple variants and struct variants. See
 /// examples for syntax for each variant type.
 ///
-/// This macro checks that the variant exists on the given enum type. If either the type or
-/// variant is renamed via refactoring tools, the macro call will be updated accordingly.
-///
 /// This macro currently expects only simple type identifiers like `Type::field`.
 /// Support for more complex types requires the experimental feature `more_qualified_paths`
-/// (issue #86935 <https://github.com/rust-lang/rust/issues/86935>) to be stabilized.
+/// (issue #86935 <https://github.com/rust-lang/rust/issues/86935>) to be stabilized (or
+/// enabled via `#![feature(more_qualified_paths)]` if using a nightly compiler).
 /// 
 /// # Examples
 /// ```rust
