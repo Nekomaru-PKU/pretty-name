@@ -4,6 +4,27 @@ mod type_name;
 pub use type_name::type_name;
 pub use type_name::type_name_of_val;
 
+/// Internal helper macro for caching string results in thread-local storage.
+///
+/// This macro wraps an expression that produces a `String` and caches it as a
+/// `&'static str` using thread-local `LazyCell`. Each unique macro invocation
+/// gets its own cache entry, ensuring zero runtime overhead after first use.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __with_cache {
+    ($expr:expr) => {{
+        use std::cell::LazyCell;
+        thread_local! {
+            static CACHE: LazyCell<&'static str> =
+                LazyCell::new(|| {
+                    let result = $expr;
+                    Box::leak(result.into_boxed_str())
+                });
+        }
+        CACHE.with(|cell| *LazyCell::force(cell))
+    }};
+}
+
 /// Get the name of the given local variable or constant as a string literal.
 /// 
 /// This macro checks that the identifier is valid in the current scope. If the identifier
@@ -25,13 +46,12 @@ macro_rules! of_var {
 }
 
 /// Get the name of the given function.
-/// 
+///
 /// Use `::<..>` syntax to exclude generic parameters in the output, see examples.
-/// 
-/// This macro produces a string literal if the function has no generic parameters,
-/// or the generic parameters are explicitly excluded with `::<..>`. Otherwise, it
-/// produces a [`String`].
-/// 
+///
+/// This macro returns `&'static str`. It caches the result and subsequent calls have
+/// zero runtime overhead.
+///
 /// This macro checks that the identifier is valid in the current scope. If the identifier
 /// is renamed via refactoring tools, the macro call will be updated accordingly.
 /// 
@@ -65,21 +85,25 @@ macro_rules! of_function {
     }};
     ($ident:ident ::<$($arg:ty),*>) => {{
         let _ = &$ident::<$($arg),*>;
-        format!(
-            "{}::<{}>",
-            stringify!($ident),
-            vec![$($crate::type_name::<$arg>()),*].join(", "))
+        $crate::__with_cache!(
+            format!(
+                "{}::<{}>",
+                stringify!($ident),
+                vec![$($crate::type_name::<$arg>()),*].join(", ")))
     }};
 }
 
-/// Get the name of the given struct field like `Type::field` as a [`String`].
-/// 
+/// Get the name of the given struct field like `Type::field` as `&'static str`.
+///
+/// This macro returns `&'static str`. It caches the result and subsequent calls have
+/// zero runtime overhead.
+///
 /// This macro resolves `Self` to the appropriate type when used inside an `impl` block.
-/// 
+///
 /// By default, this macro expects a simple type identifier like `Type::field`. To use
 /// types with qualified path or generic parameters, wrap the type in angle brackets
 /// like `<Type<T>>::field` or `<module::Type>::field`.
-/// 
+///
 /// This macro checks that the field exists on the given type. If either the type or field
 /// is renamed via refactoring tools, the macro call will be updated accordingly.
 /// 
@@ -98,25 +122,30 @@ macro_rules! of_function {
 macro_rules! of_field {
     ($ty:ident :: $field:ident) => {{
         let _ = |obj: $ty| { let _ = &obj.$field; };
-        format!("{}::{}", $crate::type_name::<$ty>(), stringify!($field))
+        $crate::__with_cache!(
+            format!("{}::{}", $crate::type_name::<$ty>(), stringify!($field)))
     }};
     (<$ty:ty> :: $field:ident) => {{
         let _ = |obj: $ty| { let _ = &obj.$field; };
-        format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($field))
+        $crate::__with_cache!(
+            format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($field)))
     }};
 }
 
-/// Get the name of the given method as a [`String`].
-/// 
+/// Get the name of the given method as `&'static str`.
+///
+/// This macro returns `&'static str`. It caches the result and subsequent calls have
+/// zero runtime overhead.
+///
 /// This macro resolves `Self` to the appropriate type when used inside an `impl` block.
-/// 
+///
 /// By default, this macro expects a simple type identifier like `Type::field`. To use
 /// types with qualified path or generic parameters, wrap the type in angle brackets
 /// like `<Type<T>>::field` or `<module::Type>::field`.
-/// 
+///
 /// This macro checks that the method exists on the given type. If either the type or method
 /// is renamed via refactoring tools, the macro call will be updated accordingly.
-/// 
+///
 /// Due to implementation limitations, you cannot use `::<..>` syntax to exclude generic
 /// parameters. Use explicit type arguments instead.
 /// 
@@ -141,41 +170,48 @@ macro_rules! of_field {
 macro_rules! of_method {
     ($ty:ident :: $method:ident) => {{
         let _ = &$ty::$method;
-        format!("{}::{}", $crate::type_name::<$ty>(), stringify!($method))
+        $crate::__with_cache!(
+            format!("{}::{}", $crate::type_name::<$ty>(), stringify!($method)))
     }};
     ($ty:ident :: $method:ident ::<$($arg:ty),*>) => {{
         let _ = &$ty::$method::<$($arg),*>;
-        format!(
-            "{}::{}::<{}>",
-            $crate::type_name::<$ty>(),
-            stringify!($method),
-            vec![$($crate::type_name::<$arg>()),*].join(", "))
+        $crate::__with_cache!(
+            format!(
+                "{}::{}::<{}>",
+                $crate::type_name::<$ty>(),
+                stringify!($method),
+                vec![$($crate::type_name::<$arg>()),*].join(", ")))
     }};
 
     (<$ty:ty> :: $method:ident) => {{
         let _ = &<$ty>::$method;
-        format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($method))
+        $crate::__with_cache!(
+            format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($method)))
     }};
     (<$ty:ty> :: $method:ident ::<$($arg:ty),*>) => {{
         let _ = &<$ty>::$method::<$($arg),*>;
-        format!(
-            "<{}>::{}::<{}>",
-            $crate::type_name::<$ty>(),
-            stringify!($method),
-            vec![$($crate::type_name::<$arg>()),*].join(", "))
+        $crate::__with_cache!(
+            format!(
+                "<{}>::{}::<{}>",
+                $crate::type_name::<$ty>(),
+                stringify!($method),
+                vec![$($crate::type_name::<$arg>()),*].join(", ")))
     }};
 }
 
-/// Get the name of the given enum variant as a [`String`].
-/// 
+/// Get the name of the given enum variant as `&'static str`.
+///
+/// This macro returns `&'static str`. It caches the result and subsequent calls have
+/// zero runtime overhead.
+///
 /// This macro resolves `Self` to the appropriate type when used inside an `impl` block.
-/// 
+///
 /// This macros supports both unit variants, tuple variants and struct variants. See
 /// examples for syntax for each variant type.
-/// 
+///
 /// This macro checks that the variant exists on the given enum type. If either the type or
 /// variant is renamed via refactoring tools, the macro call will be updated accordingly.
-/// 
+///
 /// This macro currently expects only simple type identifiers like `Type::field`.
 /// Support for more complex types requires the experimental feature `more_qualified_paths`
 /// (issue #86935 <https://github.com/rust-lang/rust/issues/86935>) to be stabilized.
@@ -195,27 +231,33 @@ macro_rules! of_method {
 macro_rules! of_variant {
     ($ty:ident $(::<$($ty_arg:ty),*>)? :: $variant:ident) => {{
         let _ = |obj| match obj { $ty $(::<$($ty_arg),*>)?::$variant => {}, _ => {} };
-        format!("{}::{}", $crate::type_name::<$ty $(::<$($ty_arg),*>)?>(), stringify!($variant))
+        $crate::__with_cache!(
+            format!("{}::{}", $crate::type_name::<$ty $(::<$($ty_arg),*>)?>(), stringify!($variant)))
     }};
     ($ty:ident $(::<$($ty_arg:ty),*>)? :: $variant:ident (..)) => {{
         let _ = |obj| match obj { $ty $(::<$($ty_arg),*>)?::$variant(..) => {}, _ => {} };
-        format!("{}::{}", $crate::type_name::<$ty $(::<$($ty_arg),*>)?>(), stringify!($variant))
+        $crate::__with_cache!(
+            format!("{}::{}", $crate::type_name::<$ty $(::<$($ty_arg),*>)?>(), stringify!($variant)))
     }};
     ($ty:ident $(::<$($ty_arg:ty),*>)? :: $variant:ident {..}) => {{
         let _ = |obj| match obj { $ty $(::<$($ty_arg),*>)?::$variant { .. } => {}, _ => {} };
-        format!("{}::{}", $crate::type_name::<$ty $(::<$($ty_arg),*>)?>(), stringify!($variant))
+        $crate::__with_cache!(
+            format!("{}::{}", $crate::type_name::<$ty $(::<$($ty_arg),*>)?>(), stringify!($variant)))
     }};
 
     (<$ty:ty> :: $variant:ident) => {{
         let _ = |obj| match obj { <$ty>::$variant => {}, _ => {} };
-        format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($variant))
+        $crate::__with_cache!(
+            format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($variant)))
     }};
     (<$ty:ty> :: $variant:ident (..)) => {{
         let _ = |obj| match obj { <$ty>::$variant(..) => {}, _ => {} };
-        format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($variant))
+        $crate::__with_cache!(
+            format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($variant)))
     }};
     (<$ty:ty> :: $variant:ident {..}) => {{
         let _ = |obj| match obj { <$ty>::$variant { .. } => {}, _ => {} };
-        format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($variant))
+        $crate::__with_cache!(
+            format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($variant)))
     }};
 }

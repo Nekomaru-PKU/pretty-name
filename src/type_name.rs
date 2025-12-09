@@ -16,9 +16,10 @@ pub fn type_name<T: ?Sized + 'static>() -> &'static str {
     use std::collections::HashMap;
     use std::collections::hash_map::Entry;
 
-    thread_local!(
+    thread_local! {
         static TYPE_NAME_CACHE: RefCell<HashMap<TypeId, &'static str>> =
-            RefCell::new(HashMap::new()));
+            RefCell::new(HashMap::new());
+    }
 
     TYPE_NAME_CACHE.with_borrow_mut(|cache| match cache.entry(TypeId::of::<T>()) {
         Entry::Occupied(entry) =>
