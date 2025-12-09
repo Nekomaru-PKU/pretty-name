@@ -10,7 +10,7 @@ Get the human-friendly name of types, functions, methods, fields, and enum varia
 
 `pretty-name` provides a set of macros and functions for extracting names of Rust language constructs at compile time. Unlike `stringify!` or `std::any::type_name`, this crate offers:
 
-## Key Features
+### Key Features
 
 - **Human-friendly output**: Type names are cleaned to remove module paths (`std::vec::Vec<T>` → `Vec<T>`), lifetime annotations (`&'static str` → `&str`), and other visual clutter.
 
@@ -18,10 +18,13 @@ Get the human-friendly name of types, functions, methods, fields, and enum varia
 
 - **Compile-time validation**: All macros check that the referenced items exist. If a referenced identifier, field, method, or variant doesn't exist, you get a compile error instead of a runtime panic.
 
-- **Natural syntax**: No strange custom syntax like `pretty_name!(type i32).
+### Other Features
 
-- **`Self` support**: Resolves `Self` into the appropriate type.
+- Natural syntax.
 
+- Support for resolving `Self`.
+
+- Support for generic parameters.
 
 ## Installation
 

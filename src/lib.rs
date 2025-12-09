@@ -33,7 +33,7 @@ pub fn type_name_of<T: ?Sized>(_: &T) -> String {
 /// ```
 #[macro_export]
 macro_rules! of {
-    ($ident:ident) => {{
+    ($ident:ident $(::<$($arg:ty),*>)?) => {{
         let _ = &$ident;
         stringify!($ident)
     }};
@@ -55,11 +55,11 @@ macro_rules! of {
 /// ```
 #[macro_export]
 macro_rules! of_field {
-    ($ty:ident :: $field:ident) => {{
+    ($ty:ident $(::<$($arg:ty),*>)? :: $field:ident) => {{
         let _ = |obj: $ty| {
             let _ = &obj.$field;
         };
-        format!("{}::{}", $crate::type_name::<$ty>(), stringify!($field))
+        format!("{}::{}", $crate::type_name::<$ty $(::<$($arg),*>)?>(), stringify!($field))
     }};
 }
 
@@ -80,9 +80,9 @@ macro_rules! of_field {
 /// ```
 #[macro_export]
 macro_rules! of_method {
-    ($ty:ident :: $method:ident) => {{
+    ($ty:ident $(::<$($arg:ty),*>)? :: $method:ident) => {{
         let _ = &$ty::$method;
-        format!("{}::{}", $crate::type_name::<$ty>(), stringify!($method))
+        format!("{}::{}", $crate::type_name::<$ty $(::<$($arg),*>)?>(), stringify!($method))
     }};
 }
 
@@ -109,16 +109,16 @@ macro_rules! of_method {
 /// ```
 #[macro_export]
 macro_rules! of_variant {
-    ($ty:ident :: $variant:ident) => {{
+    ($ty:ident $(::<$($arg:ty),*>)? :: $variant:ident) => {{
         let _ = |obj| match obj { $ty::$variant => {}, _ => {} };
-        format!("{}::{}", $crate::type_name::<$ty>(), stringify!($variant))
+        format!("{}::{}", $crate::type_name::<$ty $(::<$($arg),*>)?>(), stringify!($variant))
     }};
-    ($ty:ident :: $variant:ident (..)) => {{
+    ($ty:ident $(::<$($arg:ty),*>)? :: $variant:ident (..)) => {{
         let _ = |obj| match obj { $ty::$variant(..) => {}, _ => {} };
-        format!("{}::{}", $crate::type_name::<$ty>(), stringify!($variant))
+        format!("{}::{}", $crate::type_name::<$ty $(::<$($arg),*>)?>(), stringify!($variant))
     }};
-    ($ty:ident :: $variant:ident {..}) => {{
+    ($ty:ident $(::<$($arg:ty),*>)? :: $variant:ident {..}) => {{
         let _ = |obj| match obj { $ty::$variant { .. } => {}, _ => {} };
-        format!("{}::{}", $crate::type_name::<$ty>(), stringify!($variant))
+        format!("{}::{}", $crate::type_name::<$ty $(::<$($arg),*>)?>(), stringify!($variant))
     }};
 }
