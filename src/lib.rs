@@ -21,7 +21,7 @@ pub use type_name::type_name_of_val;
 #[macro_export]
 macro_rules! of {
     ($ident:ident $(::<$($arg:ty),*>)?) => {{
-        let _ = &$ident;
+        let _ = &$ident $(::<$($arg),*>)?;
         stringify!($ident)
     }};
 }
@@ -42,11 +42,9 @@ macro_rules! of {
 /// ```
 #[macro_export]
 macro_rules! of_field {
-    ($ty:ident $(::<$($arg:ty),*>)? :: $field:ident) => {{
-        let _ = |obj: $ty| {
-            let _ = &obj.$field;
-        };
-        format!("{}::{}", $crate::type_name::<$ty $(::<$($arg),*>)?>(), stringify!($field))
+    ($ty:ident $(::<$($ty_arg:ty),*>)? :: $field:ident) => {{
+        let _ = |obj: $ty $(::<$($ty_arg),*>)?| { let _ = &obj.$field; };
+        format!("{}::{}", $crate::type_name::<$ty $(::<$($ty_arg),*>)?>(), stringify!($field))
     }};
 }
 
@@ -67,9 +65,9 @@ macro_rules! of_field {
 /// ```
 #[macro_export]
 macro_rules! of_method {
-    ($ty:ident $(::<$($arg:ty),*>)? :: $method:ident) => {{
-        let _ = &$ty::$method;
-        format!("{}::{}", $crate::type_name::<$ty $(::<$($arg),*>)?>(), stringify!($method))
+    ($ty:ident $(::<$($ty_arg:ty),*>)? :: $method:ident $(::<$($method_arg:ty),*>)?) => {{
+        let _ = &$ty $(::<$($ty_arg),*>)?::$method $(::<$($method_arg),*>)?;
+        format!("{}::{}", $crate::type_name::<$ty $(::<$($ty_arg),*>)?>(), stringify!($method))
     }};
 }
 
@@ -96,16 +94,16 @@ macro_rules! of_method {
 /// ```
 #[macro_export]
 macro_rules! of_variant {
-    ($ty:ident $(::<$($arg:ty),*>)? :: $variant:ident) => {{
-        let _ = |obj| match obj { $ty::$variant => {}, _ => {} };
-        format!("{}::{}", $crate::type_name::<$ty $(::<$($arg),*>)?>(), stringify!($variant))
+    ($ty:ident $(::<$($ty_arg:ty),*>)? :: $variant:ident) => {{
+        let _ = |obj| match obj { $ty $(::<$($ty_arg),*>)?::$variant => {}, _ => {} };
+        format!("{}::{}", $crate::type_name::<$ty $(::<$($ty_arg),*>)?>(), stringify!($variant))
     }};
-    ($ty:ident $(::<$($arg:ty),*>)? :: $variant:ident (..)) => {{
-        let _ = |obj| match obj { $ty::$variant(..) => {}, _ => {} };
-        format!("{}::{}", $crate::type_name::<$ty $(::<$($arg),*>)?>(), stringify!($variant))
+    ($ty:ident $(::<$($ty_arg:ty),*>)? :: $variant:ident (..)) => {{
+        let _ = |obj| match obj { $ty $(::<$($ty_arg),*>)?::$variant(..) => {}, _ => {} };
+        format!("{}::{}", $crate::type_name::<$ty $(::<$($ty_arg),*>)?>(), stringify!($variant))
     }};
-    ($ty:ident $(::<$($arg:ty),*>)? :: $variant:ident {..}) => {{
-        let _ = |obj| match obj { $ty::$variant { .. } => {}, _ => {} };
-        format!("{}::{}", $crate::type_name::<$ty $(::<$($arg),*>)?>(), stringify!($variant))
+    ($ty:ident $(::<$($ty_arg:ty),*>)? :: $variant:ident {..}) => {{
+        let _ = |obj| match obj { $ty $(::<$($ty_arg),*>)?::$variant { .. } => {}, _ => {} };
+        format!("{}::{}", $crate::type_name::<$ty $(::<$($ty_arg),*>)?>(), stringify!($variant))
     }};
 }
