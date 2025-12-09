@@ -87,6 +87,34 @@ macro_rules! of_function {
     }};
 }
 
+/// Get the name of the given type as a `&'static str`.
+/// 
+/// This macro resolves `Self` to the appropriate type when used inside an `impl` block.
+/// 
+/// If the given type is a single identifier and is not `Self`, the macro expands to a
+/// string literal at compile time. For more complex types, the macro uses runtime type
+/// name retrieval with caching.
+/// 
+/// # Examples
+/// ```rust
+/// struct MyStruct;
+/// struct MyGenericStruct<T>(std::marker::PhantomData<T>);
+/// assert_eq!(pretty_name::of_type!(MyStruct), "MyStruct");
+/// assert_eq!(pretty_name::of_type!(MyGenericStruct<u32>), "MyGenericStruct<u32>");
+/// ```
+#[macro_export]
+macro_rules! of_type {
+    (Self) => {{
+        $crate::type_name::<Self>()
+    }};
+    ($ty:ident) => {{
+        stringify!($ty)
+    }};
+    ($ty:ty) => {{
+        $crate::type_name::<$ty>()
+    }};
+}
+
 /// Get the name of the given struct field like `Type::field` as a `&'static str`.
 ///
 /// This macro resolves `Self` to the appropriate type when used inside an `impl` block.
@@ -94,6 +122,10 @@ macro_rules! of_function {
 /// By default, this macro expects a simple type identifier like `Type::field`. To use
 /// types with qualified path or generic parameters, wrap the type in angle brackets
 /// like `<Type<T>>::field` or `<module::Type>::field`.
+/// 
+/// If the *Type* part is a single identifier and is not `Self`, the macro expands to a
+/// string literal at compile time. For more complex types, the macro uses runtime type
+/// name retrieval with caching.
 /// 
 /// # Examples
 /// ```rust
@@ -124,13 +156,17 @@ macro_rules! of_field {
     }};
 }
 
-/// Get the name of the given method as a `&'static str`.
+/// Get the name of the given method like `Type::method` as a `&'static str`.
 ///
 /// This macro resolves `Self` to the appropriate type when used inside an `impl` block.
 ///
 /// By default, this macro expects a simple type identifier like `Type::field`. To use
 /// types with qualified path or generic parameters, wrap the type in angle brackets
 /// like `<Type<T>>::field` or `<module::Type>::field`.
+/// 
+/// If both the *Type* and *method* parts are single identifiers and the *Type* part is
+/// not `Self`, the macro expands to a string literal at compile time. For more complex
+/// types, the macro uses runtime type name retrieval with caching.
 ///
 /// Due to implementation limitations, you cannot use the `::<..>` placeholder to exclude
 /// generic parameters. Use explicit type arguments instead.
@@ -195,8 +231,12 @@ macro_rules! of_method {
 ///
 /// This macros supports both unit variants, tuple variants and struct variants. See
 /// examples for syntax for each variant type.
+/// 
+/// If the *Type* part is a single identifier and is not `Self`, the macro expands to a
+/// string literal at compile time. For more complex types, the macro uses runtime type
+/// name retrieval with caching.
 ///
-/// This macro currently expects only simple type identifiers like `Type::field`.
+/// This macro currently expects only simple type identifiers.
 /// Support for more complex types requires the experimental feature `more_qualified_paths`
 /// (issue #86935 <https://github.com/rust-lang/rust/issues/86935>) to be stabilized (or
 /// enabled via `#![feature(more_qualified_paths)]` if using a nightly compiler).

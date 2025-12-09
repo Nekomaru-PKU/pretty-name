@@ -1,7 +1,10 @@
 use syn::*;
 
-/// Get the human-friendly type name of given type `T`, removing visual clutter such as
-/// full module paths.
+/// Get the human-friendly type name of given type `T`.
+/// 
+/// Note that you can also use the `pretty_name::of_type!(T)` macro, which expands to a
+/// string literal at compile time if `T` is a simple type identifier, and expands to a
+/// call to this function otherwise.
 /// 
 /// # Examples
 /// ```rust
@@ -29,8 +32,7 @@ pub fn type_name<T: ?Sized>() -> &'static str {
     })
 }
 
-/// Get the human-friendly type name of the given value, removing visual clutter such as
-/// full module paths.
+/// Get the human-friendly type name of the given value.
 /// 
 /// Note that even if the value is a reference, you should pass a reference to it to get
 /// the correct type name.
