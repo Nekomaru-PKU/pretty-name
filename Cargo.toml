@@ -1,0 +1,15 @@
+[package]
+name = "pretty-name"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+keywords = ["name", "name-of", "name_of", "type-name", "type_name"]
+categories = ["development-tools"]
+repository = "https://github.com/Nekomaru-PKU/pretty-name"
+documentation = "https://docs.rs/pretty-name"
+description = "Get the human-friendly name of types, functions, methods, fields, and enum variants in a refactoring-safe way."
+
+[dependencies]
+quote = "1.0"
+rust-format = { version = "0.3.4", features = ["token_stream"] }
+syn = { version = "2.0", features = ["full"] }
