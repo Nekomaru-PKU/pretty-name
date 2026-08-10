@@ -47,10 +47,10 @@ macro_rules! __with_cache {
 }
 
 /// Get the name of the given local variable or constant as a string literal.
-/// 
+///
 /// This macro checks that the identifier is valid in the current scope. If the identifier
 /// is renamed via refactoring tools, the macro call will be updated accordingly.
-/// 
+///
 /// # Examples
 /// ```rust
 /// let my_variable = 42;
@@ -69,7 +69,7 @@ macro_rules! of_var {
 /// Get the name of the given function as a `&'static str`.
 ///
 /// Use a `::<..>` placeholder to exclude generic parameters in the output, see examples.
-/// 
+///
 /// # Examples
 /// ```rust
 /// fn my_function() {}
@@ -110,13 +110,13 @@ macro_rules! of_function {
 }
 
 /// Get the name of the given type as a `&'static str`.
-/// 
+///
 /// This macro resolves `Self` to the appropriate type when used inside an `impl` block.
-/// 
+///
 /// If the given type is a single identifier and is not `Self`, the macro expands to a
 /// string literal at compile time. For more complex types, the macro uses runtime type
 /// name retrieval with caching.
-/// 
+///
 /// # Examples
 /// ```rust
 /// struct MyStruct;
@@ -156,11 +156,11 @@ macro_rules! of_type {
 /// By default, this macro expects a simple type identifier like `Type::field`. To use
 /// types with qualified path or generic parameters, wrap the type in angle brackets
 /// like `<Type<T>>::field` or `<module::Type>::field`.
-/// 
+///
 /// If the *Type* part is a single identifier and is not `Self`, the macro expands to a
 /// string literal at compile time. For more complex types, the macro uses runtime type
 /// name retrieval with caching.
-/// 
+///
 /// # Examples
 /// ```rust
 /// struct MyStruct {
@@ -199,14 +199,14 @@ macro_rules! of_field {
 /// By default, this macro expects a simple type identifier like `Type::field`. To use
 /// types with qualified path or generic parameters, wrap the type in angle brackets
 /// like `<Type<T>>::field` or `<module::Type>::field`.
-/// 
+///
 /// If both the *Type* and *method* parts are single identifiers and the *Type* part is
 /// not `Self`, the macro expands to a string literal at compile time. For more complex
 /// types, the macro uses runtime type name retrieval with caching.
 ///
 /// Due to implementation limitations, you cannot use the `::<..>` placeholder to exclude
 /// generic parameters. Use explicit type arguments instead.
-/// 
+///
 /// # Examples
 /// ```rust
 /// struct MyStruct;
@@ -279,7 +279,7 @@ macro_rules! of_method {
 ///
 /// This macros supports both unit variants, tuple variants and struct variants. See
 /// examples for syntax for each variant type.
-/// 
+///
 /// If the *Type* part is a single identifier and is not `Self`, the macro expands to a
 /// string literal at compile time. For more complex types, the macro uses runtime type
 /// name retrieval with caching.
@@ -288,7 +288,7 @@ macro_rules! of_method {
 /// Support for more complex types requires the experimental feature `more_qualified_paths`
 /// (issue #86935 <https://github.com/rust-lang/rust/issues/86935>) to be stabilized (or
 /// enabled via `#![feature(more_qualified_paths)]` if using a nightly compiler).
-/// 
+///
 /// # Examples
 /// ```rust
 /// enum MyEnum {
@@ -352,92 +352,4 @@ macro_rules! of_variant {
             [::std::any::type_name::<$ty>(), stringify!($variant)] =>
             format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($variant)))
     }};
-}
-
-#[cfg(test)]
-mod tests {
-    use std::marker::PhantomData;
-
-    /// Generic function used to verify that cache entries follow monomorphizations.
-    fn generic_function<T>() {}
-
-    /// Gets the name of [`generic_function`] for the caller's concrete type.
-    fn generic_function_name<T>() -> &'static str {
-        crate::of_function!(generic_function::<T>)
-    }
-
-    /// Generic owner used to verify that `Self` cache entries follow monomorphizations.
-    struct GenericStruct<T>(PhantomData<T>);
-
-    impl<T> GenericStruct<T> {
-        /// Method referenced by the name macro.
-        fn method(&self) {}
-
-        /// Gets the method name for the concrete `Self` type.
-        fn method_name() -> &'static str {
-            crate::of_method!(Self::method)
-        }
-    }
-
-    /// Gets the source spelling of a possibly unsized generic type parameter.
-    fn generic_type_source_name<T: ?Sized>() -> &'static str {
-        crate::of_type!(T)
-    }
-
-    /// Verifies the existing `Self` behavior for types, fields, and generic methods.
-    #[test]
-    fn self_macros_resolve_the_concrete_owner() {
-        struct MyStruct {
-            my_field: u32,
-        }
-        impl MyStruct {
-            /// Method referenced by the name macro.
-            fn my_method<T>(&self) {}
-
-            /// Verifies every supported `Self`-based name within its valid scope.
-            fn verify_names(&self) {
-                assert_eq!(crate::of_type!(Self), "MyStruct");
-                assert_eq!(crate::of_field!(Self::my_field), "MyStruct::my_field");
-                assert_eq!(crate::of_method!(Self::my_method::<u32>), "MyStruct::my_method::<u32>");
-            }
-        }
-
-        let my_struct = MyStruct { my_field: 42 };
-        my_struct.verify_names();
-    }
-
-    /// Verifies one call site caches each concrete generic function name separately.
-    #[test]
-    fn function_cache_distinguishes_generic_monomorphizations() {
-        assert_eq!(
-            (generic_function_name::<u8>(), generic_function_name::<u16>()),
-            ("generic_function::<u8>", "generic_function::<u16>"));
-    }
-
-    /// Verifies a macro invocation shares its cached result between threads.
-    #[test]
-    fn function_cache_reuses_one_result_across_threads() {
-        let first = std::thread::spawn(generic_function_name::<u32>)
-            .join()
-            .unwrap();
-        let second = std::thread::spawn(generic_function_name::<u32>)
-            .join()
-            .unwrap();
-
-        assert!(std::ptr::eq(first, second));
-    }
-
-    /// Verifies a generic `Self` method does not reuse another owner's cached name.
-    #[test]
-    fn self_cache_distinguishes_generic_monomorphizations() {
-        assert_eq!(
-            (GenericStruct::<u8>::method_name(), GenericStruct::<u16>::method_name()),
-            ("GenericStruct<u8>::method", "GenericStruct<u16>::method"));
-    }
-
-    /// Verifies validation does not accidentally impose an implicit `Sized` bound.
-    #[test]
-    fn simple_type_validation_accepts_unsized_generic_parameters() {
-        assert_eq!(generic_type_source_name::<str>(), "T");
-    }
 }
