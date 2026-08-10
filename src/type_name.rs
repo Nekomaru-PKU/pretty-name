@@ -1,7 +1,17 @@
 use std::borrow::Cow;
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
+use std::sync::{LazyLock, RwLock};
 
 use quote::quote;
 use syn::*;
+
+/// Process-wide cache from compiler-generated type names to their pretty forms.
+///
+/// The compiler names are already `&'static str`, and each owned pretty form is leaked
+/// once so the public API can retain its historical `&'static str` return type.
+static TYPE_NAME_CACHE: LazyLock<RwLock<HashMap<&'static str, &'static str>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
 
 /// Get the human-friendly type name of given type `T`.
 /// 
@@ -22,26 +32,32 @@ use syn::*;
 /// assert_eq!(type_name::<Vec<Box<dyn std::fmt::Debug>>>(), "Vec<Box<dyn Debug>>");
 /// ```
 pub fn type_name<T: ?Sized>() -> &'static str {
-    use std::cell::RefCell;
-    use std::collections::HashMap;
-    use std::collections::hash_map::Entry;
-
-    thread_local! {
-        static TYPE_NAME_CACHE: RefCell<HashMap<&'static str, &'static str>> =
-            RefCell::new(HashMap::new());
+    let full_name = std::any::type_name::<T>();
+    let cached = TYPE_NAME_CACHE
+        .read()
+        // CONTEXT: A panic cannot invalidate previously inserted immutable strings.
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(full_name)
+        .copied();
+    if let Some(cached) = cached {
+        return cached;
     }
 
-    let full_name = std::any::type_name::<T>();
-    TYPE_NAME_CACHE.with_borrow_mut(|cache| match cache.entry(full_name) {
-        Entry::Occupied(entry) => *entry.get(),
+    let pretty_name = prettify_type_name(full_name);
+    let mut cache = TYPE_NAME_CACHE
+        .write()
+        // CONTEXT: A panic cannot invalidate previously inserted immutable strings.
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    match cache.entry(full_name) {
+        Entry::Occupied(entry) => entry.get(),
         Entry::Vacant(entry) => {
-            let pretty_name = match prettify_type_name(full_name) {
+            let pretty_name = match pretty_name {
                 Cow::Borrowed(name) => name,
                 Cow::Owned(name) => Box::leak(name.into_boxed_str()),
             };
-            *entry.insert(pretty_name)
+            entry.insert(pretty_name)
         }
-    })
+    }
 }
 
 /// Get the human-friendly type name of the given value.
@@ -354,5 +370,18 @@ mod test {
         let formatted = "type __PrettyName =\n    Vec<String>;\n";
 
         assert_eq!(extract_pretty_type(formatted), Some("Vec<String>"));
+    }
+
+    /// Verifies formatted types share one allocation across threads.
+    #[test]
+    fn cache_reuses_one_result_across_threads() {
+        let first = std::thread::spawn(type_name::<Vec<std::num::NonZeroU8>>)
+            .join()
+            .unwrap();
+        let second = std::thread::spawn(type_name::<Vec<std::num::NonZeroU8>>)
+            .join()
+            .unwrap();
+
+        assert!(std::ptr::eq(first, second));
     }
 }
