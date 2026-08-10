@@ -4,21 +4,45 @@ mod type_name;
 pub use type_name::type_name;
 pub use type_name::type_name_of_val;
 
-/// Internal helper macro for caching string results in thread-local storage.
+/// Internal helper macro for caching dynamically generated names process-wide.
 ///
-/// This macro wraps an expression that produces a `String` and caches it as a
-/// `&'static str` using thread-local `OnceCell`. Each unique macro invocation
-/// gets its own cache entry, ensuring zero runtime overhead after first use.
+/// Each invocation owns a cache keyed by the supplied compiler type names. Keying the
+/// cache is required because local static items are shared by every monomorphization of
+/// a generic function containing the invocation. One result is intentionally leaked per
+/// distinct key so callers can keep receiving `&'static str`.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __with_cache {
-    ($expr:expr) => {{
-        use std::cell::OnceCell;
-        thread_local!(static CACHE: OnceCell<&'static str> = OnceCell::new());
-        CACHE.with(|cell| *cell.get_or_init(|| {
+    ([$($key:expr),+ $(,)?] => $expr:expr) => {{
+        use std::collections::HashMap;
+        use std::sync::{LazyLock, RwLock};
+
+        static CACHE: LazyLock<RwLock<HashMap<Vec<&'static str>, &'static str>>> =
+            LazyLock::new(|| RwLock::new(HashMap::new()));
+
+        let cache_key = [$($key),+];
+        let cached = CACHE
+            .read()
+            // CONTEXT: A panic cannot invalidate previously inserted immutable strings.
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(cache_key.as_slice())
+            .copied();
+        if let Some(cached) = cached {
+            cached
+        } else {
             let result = $expr;
-            Box::leak(result.into_boxed_str())
-        }))
+            let mut cache = CACHE
+                .write()
+                // CONTEXT: A panic cannot invalidate previously inserted immutable strings.
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(cached) = cache.get(cache_key.as_slice()).copied() {
+                cached
+            } else {
+                let result: &'static str = Box::leak(result.into_boxed_str());
+                cache.insert(cache_key.to_vec(), result);
+                result
+            }
+        }
     }};
 }
 
@@ -77,6 +101,7 @@ macro_rules! of_function {
     ($ident:ident ::<$($arg:ty),*>) => {{
         let _ = &$ident::<$($arg),*>;
         $crate::__with_cache!(
+            [stringify!($ident), $(::std::any::type_name::<$arg>()),*] =>
             format!(
                 "{}::<{}>",
                 stringify!($ident),
@@ -152,6 +177,7 @@ macro_rules! of_field {
     (Self:: $field:ident) => {{
         let _ = |obj: Self| { let _ = &obj.$field; };
         $crate::__with_cache!(
+            [::std::any::type_name::<Self>(), stringify!($field)] =>
             format!("{}::{}", $crate::type_name::<Self>(), stringify!($field)))
     }};
     ($ty:ident :: $field:ident) => {{
@@ -161,6 +187,7 @@ macro_rules! of_field {
     (<$ty:ty> :: $field:ident) => {{
         let _ = |obj: $ty| { let _ = &obj.$field; };
         $crate::__with_cache!(
+            [::std::any::type_name::<$ty>(), stringify!($field)] =>
             format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($field)))
     }};
 }
@@ -202,6 +229,7 @@ macro_rules! of_method {
     (Self:: $method:ident) => {{
         let _ = &Self::$method;
         $crate::__with_cache!(
+            [::std::any::type_name::<Self>(), stringify!($method)] =>
             format!("{}::{}", $crate::type_name::<Self>(), stringify!($method)))
     }};
     ($ty:ident :: $method:ident) => {{
@@ -211,6 +239,11 @@ macro_rules! of_method {
     ($ty:ident :: $method:ident ::<$($arg:ty),*>) => {{
         let _ = &$ty::$method::<$($arg),*>;
         $crate::__with_cache!(
+            [
+                ::std::any::type_name::<$ty>(),
+                stringify!($method),
+                $(::std::any::type_name::<$arg>()),*
+            ] =>
             format!(
                 "{}::{}::<{}>",
                 $crate::type_name::<$ty>(),
@@ -221,11 +254,17 @@ macro_rules! of_method {
     (<$ty:ty> :: $method:ident) => {{
         let _ = &<$ty>::$method;
         $crate::__with_cache!(
+            [::std::any::type_name::<$ty>(), stringify!($method)] =>
             format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($method)))
     }};
     (<$ty:ty> :: $method:ident ::<$($arg:ty),*>) => {{
         let _ = &<$ty>::$method::<$($arg),*>;
         $crate::__with_cache!(
+            [
+                ::std::any::type_name::<$ty>(),
+                stringify!($method),
+                $(::std::any::type_name::<$arg>()),*
+            ] =>
             format!(
                 "<{}>::{}::<{}>",
                 $crate::type_name::<$ty>(),
@@ -266,16 +305,19 @@ macro_rules! of_variant {
     (Self:: $variant:ident) => {{
         let _ = |obj: Self| match obj { Self::$variant => {}, _ => {} };
         $crate::__with_cache!(
+            [::std::any::type_name::<Self>(), stringify!($variant)] =>
             format!("{}::{}", $crate::type_name::<Self>(), stringify!($variant)))
     }};
     (Self:: $variant:ident (..)) => {{
         let _ = |obj: Self| match obj { Self::$variant(..) => {}, _ => {} };
         $crate::__with_cache!(
+            [::std::any::type_name::<Self>(), stringify!($variant)] =>
             format!("{}::{}", $crate::type_name::<Self>(), stringify!($variant)))
     }};
     (Self:: $variant:ident {..}) => {{
         let _ = |obj: Self| match obj { Self::$variant { .. } => {}, _ => {} };
         $crate::__with_cache!(
+            [::std::any::type_name::<Self>(), stringify!($variant)] =>
             format!("{}::{}", $crate::type_name::<Self>(), stringify!($variant)))
     }};
 
@@ -295,22 +337,48 @@ macro_rules! of_variant {
     (<$ty:ty> :: $variant:ident) => {{
         let _ = |obj: $ty| match obj { <$ty>::$variant => {}, _ => {} };
         $crate::__with_cache!(
+            [::std::any::type_name::<$ty>(), stringify!($variant)] =>
             format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($variant)))
     }};
     (<$ty:ty> :: $variant:ident (..)) => {{
         let _ = |obj: $ty| match obj { <$ty>::$variant(..) => {}, _ => {} };
         $crate::__with_cache!(
+            [::std::any::type_name::<$ty>(), stringify!($variant)] =>
             format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($variant)))
     }};
     (<$ty:ty> :: $variant:ident {..}) => {{
         let _ = |obj: $ty| match obj { <$ty>::$variant { .. } => {}, _ => {} };
         $crate::__with_cache!(
+            [::std::any::type_name::<$ty>(), stringify!($variant)] =>
             format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($variant)))
     }};
 }
 
 #[cfg(test)]
 mod tests {
+    use std::marker::PhantomData;
+
+    /// Generic function used to verify that cache entries follow monomorphizations.
+    fn generic_function<T>() {}
+
+    /// Gets the name of [`generic_function`] for the caller's concrete type.
+    fn generic_function_name<T>() -> &'static str {
+        crate::of_function!(generic_function::<T>)
+    }
+
+    /// Generic owner used to verify that `Self` cache entries follow monomorphizations.
+    struct GenericStruct<T>(PhantomData<T>);
+
+    impl<T> GenericStruct<T> {
+        /// Method referenced by the name macro.
+        fn method(&self) {}
+
+        /// Gets the method name for the concrete `Self` type.
+        fn method_name() -> &'static str {
+            crate::of_method!(Self::method)
+        }
+    }
+
     /// Gets the source spelling of a possibly unsized generic type parameter.
     fn generic_type_source_name<T: ?Sized>() -> &'static str {
         crate::of_type!(T)
@@ -336,6 +404,35 @@ mod tests {
 
         let my_struct = MyStruct { my_field: 42 };
         my_struct.verify_names();
+    }
+
+    /// Verifies one call site caches each concrete generic function name separately.
+    #[test]
+    fn function_cache_distinguishes_generic_monomorphizations() {
+        assert_eq!(
+            (generic_function_name::<u8>(), generic_function_name::<u16>()),
+            ("generic_function::<u8>", "generic_function::<u16>"));
+    }
+
+    /// Verifies a macro invocation shares its cached result between threads.
+    #[test]
+    fn function_cache_reuses_one_result_across_threads() {
+        let first = std::thread::spawn(generic_function_name::<u32>)
+            .join()
+            .unwrap();
+        let second = std::thread::spawn(generic_function_name::<u32>)
+            .join()
+            .unwrap();
+
+        assert!(std::ptr::eq(first, second));
+    }
+
+    /// Verifies a generic `Self` method does not reuse another owner's cached name.
+    #[test]
+    fn self_cache_distinguishes_generic_monomorphizations() {
+        assert_eq!(
+            (GenericStruct::<u8>::method_name(), GenericStruct::<u16>::method_name()),
+            ("GenericStruct<u8>::method", "GenericStruct<u16>::method"));
     }
 
     /// Verifies validation does not accidentally impose an implicit `Sized` bound.
