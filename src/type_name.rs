@@ -1,3 +1,6 @@
+use std::borrow::Cow;
+
+use quote::quote;
 use syn::*;
 
 /// Get the human-friendly type name of given type `T`.
@@ -5,6 +8,11 @@ use syn::*;
 /// Note that you can also use the `pretty_name::of_type!(T)` macro, which expands to a
 /// string literal at compile time if `T` is a simple type identifier, and expands to a
 /// call to this function otherwise.
+///
+/// The returned name is intended for diagnostics rather than persistent identity. Rust
+/// does not guarantee the exact format or uniqueness of [`std::any::type_name`]. If a
+/// compiler-generated name is not valid Rust type syntax, this function returns that
+/// original name instead of replacing it with an opaque error marker.
 /// 
 /// # Examples
 /// ```rust
@@ -25,10 +33,14 @@ pub fn type_name<T: ?Sized>() -> &'static str {
 
     let full_name = std::any::type_name::<T>();
     TYPE_NAME_CACHE.with_borrow_mut(|cache| match cache.entry(full_name) {
-        Entry::Occupied(entry) =>
-            *entry.get(),
-        Entry::Vacant(entry) =>
-            *entry.insert(type_name_internal::<T>()),
+        Entry::Occupied(entry) => *entry.get(),
+        Entry::Vacant(entry) => {
+            let pretty_name = match prettify_type_name(full_name) {
+                Cow::Borrowed(name) => name,
+                Cow::Owned(name) => Box::leak(name.into_boxed_str()),
+            };
+            *entry.insert(pretty_name)
+        }
     })
 }
 
@@ -48,30 +60,42 @@ pub fn type_name_of_val<T: ?Sized>(_: &T) -> &'static str {
     type_name::<T>()
 }
 
-fn type_name_internal<T: ?Sized>() -> &'static str {
-    let type_name = std::any::type_name::<T>();
+/// Produces a shortened type name or borrows the original when it cannot be parsed.
+///
+/// The fallback keeps compiler-generated names such as closure descriptions useful and
+/// prevents formatter implementation details from becoming runtime failure paths.
+fn prettify_type_name(type_name: &'static str) -> Cow<'static, str> {
     let Ok(mut ty) = syn::parse_str::<Type>(type_name) else {
-        return "<error>";
+        return Cow::Borrowed(type_name);
     };
 
     truncate_type(&mut ty);
 
-    // Use rustfmt to get a nicely formatted type string.
-    // rustfmt only accepts full source files, so we wrap the type in a dummy function.
-    use quote::quote;
-    use rust_format::Formatter as _;
-    let format_result =
-        rust_format::RustFmt::default()
-            .format_tokens(quote!(fn main() -> #ty {}))
-            .unwrap_or("<error>".to_string());
-    let start = const { "fn main() -> ".len() };
-    let end = format_result.len() - const { " {}\r\n".len() };
-    Box::leak(
-        format_result[start..end]
-            .to_owned()
-            .into_boxed_str())
+    let Ok(file) = syn::parse2::<File>(quote!(type __PrettyName = #ty;)) else {
+        return Cow::Borrowed(type_name);
+    };
+    let formatted = prettyplease::unparse(&file);
+    let Some(pretty_name) = extract_pretty_type(&formatted) else {
+        return Cow::Borrowed(type_name);
+    };
+
+    Cow::Owned(pretty_name.to_owned())
 }
 
+/// Extracts the right-hand type from the private alias used for pretty-printing.
+///
+/// Whitespace around `=` is deliberately ignored because pretty-printers may wrap a
+/// deeply nested type onto the next line.
+fn extract_pretty_type(formatted: &str) -> Option<&str> {
+    let (declaration, pretty_name) = formatted.split_once('=')?;
+    if declaration.trim() != "type __PrettyName" {
+        return None;
+    }
+
+    pretty_name.trim().strip_suffix(';')
+}
+
+/// Removes lifetimes and module qualification recursively from a parsed type.
 fn truncate_type(ty: &mut Type) {
     match *ty {
         Type::Infer(_) |
@@ -132,6 +156,7 @@ fn truncate_type(ty: &mut Type) {
     }
 }
 
+/// Retains a path's final segment and shortens types nested in its arguments.
 fn truncate_path(path: &mut Path) {
     let path_mut = path;
     let path = std::mem::replace(
@@ -141,7 +166,7 @@ fn truncate_path(path: &mut Path) {
             segments: Default::default(),
         });
 
-    let Some(mut last_segment) = path.segments.into_iter().last() else {
+    let Some(mut last_segment) = path.segments.into_iter().next_back() else {
         path_mut.leading_colon = None;
         path_mut.segments = Default::default();
         return;
@@ -176,8 +201,9 @@ fn truncate_path(path: &mut Path) {
 
 #[cfg(test)]
 mod test {
-    use super::type_name;
+    use super::{extract_pretty_type, prettify_type_name, type_name};
 
+    /// Verifies shortening and formatting across the supported Rust type forms.
     #[test]
     fn test_type_name() {
         // ===== Primitives =====
@@ -312,5 +338,21 @@ mod test {
         assert_eq!(type_name::<[(); 5]>(), "[(); 5]");
         assert_eq!(type_name::<std::marker::PhantomData<i32>>(), "PhantomData<i32>");
         assert_eq!(type_name::<std::marker::PhantomData<&str>>(), "PhantomData<&str>");
+    }
+
+    /// Verifies compiler descriptions outside Rust's type grammar remain informative.
+    #[test]
+    fn unparseable_compiler_name_is_preserved() {
+        const CLOSURE_NAME: &str = "example::function::{{closure}}";
+
+        assert_eq!(prettify_type_name(CLOSURE_NAME), CLOSURE_NAME);
+    }
+
+    /// Verifies extraction tolerates line wrapping chosen by the pretty-printer.
+    #[test]
+    fn formatted_type_extraction_accepts_a_line_break_after_equals() {
+        let formatted = "type __PrettyName =\n    Vec<String>;\n";
+
+        assert_eq!(extract_pretty_type(formatted), Some("Vec<String>"));
     }
 }
