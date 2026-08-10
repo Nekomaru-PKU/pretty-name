@@ -14,7 +14,7 @@ static TYPE_NAME_CACHE: LazyLock<RwLock<HashMap<&'static str, &'static str>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
 
 /// Get the human-friendly type name of given type `T`.
-/// 
+///
 /// Note that you can also use the `pretty_name::of_type!(T)` macro, which expands to a
 /// string literal at compile time if `T` is a simple type identifier, and expands to a
 /// call to this function otherwise.
@@ -23,7 +23,7 @@ static TYPE_NAME_CACHE: LazyLock<RwLock<HashMap<&'static str, &'static str>>> =
 /// does not guarantee the exact format or uniqueness of [`std::any::type_name`]. If a
 /// compiler-generated name is not valid Rust type syntax, this function returns that
 /// original name instead of replacing it with an opaque error marker.
-/// 
+///
 /// # Examples
 /// ```rust
 /// use pretty_name::type_name;
@@ -61,10 +61,10 @@ pub fn type_name<T: ?Sized>() -> &'static str {
 }
 
 /// Get the human-friendly type name of the given value.
-/// 
+///
 /// Note that even if the value is a reference, you should pass a reference to it to get
 /// the correct type name.
-/// 
+///
 /// # Examples
 /// ```rust
 /// use pretty_name::type_name_of_val;
@@ -120,8 +120,8 @@ fn truncate_type(ty: &mut Type) {
         Type::Verbatim(_) => {}
 
         Type::Array(TypeArray { ref mut elem, .. }) |
-        Type::Group(TypeGroup { group_token: _, ref mut elem }) |
-        Type::Paren(TypeParen { paren_token: _, ref mut elem }) |
+        Type::Group(TypeGroup { ref mut elem, .. }) |
+        Type::Paren(TypeParen { ref mut elem, .. }) |
         Type::Ptr(TypePtr { ref mut elem, .. }) |
         Type::Slice(TypeSlice { ref mut elem, .. }) => truncate_type(elem),
 
@@ -136,7 +136,7 @@ fn truncate_type(ty: &mut Type) {
 
         Type::Path(ref mut ty) => truncate_path(&mut ty.path),
 
-        Type::BareFn(ref mut ty) => {
+        Type::FnPtr(ref mut ty) => {
             for input in ty.inputs.iter_mut() {
                 truncate_type(&mut input.ty);
             }
@@ -203,7 +203,7 @@ fn truncate_path(path: &mut Path) {
         }
         PathArguments::Parenthesized(ref mut args) => {
             for input in args.inputs.iter_mut() {
-                truncate_type(input);
+                truncate_type(&mut input.ty);
             }
             if let ReturnType::Type(_, ref mut output) = args.output {
                 truncate_type(output);
@@ -354,6 +354,26 @@ mod test {
         assert_eq!(type_name::<[(); 5]>(), "[(); 5]");
         assert_eq!(type_name::<std::marker::PhantomData<i32>>(), "PhantomData<i32>");
         assert_eq!(type_name::<std::marker::PhantomData<&str>>(), "PhantomData<&str>");
+    }
+
+    /// Verifies named function-pointer arguments retain names while nested paths shorten.
+    #[test]
+    fn named_function_pointer_arguments_are_shortened() {
+        const TYPE_NAME: &str = "fn(input: std::vec::Vec<std::string::String>) -> std::option::Option<std::path::PathBuf>";
+
+        assert_eq!(
+            prettify_type_name(TYPE_NAME),
+            "fn(input: Vec<String>) -> Option<PathBuf>");
+    }
+
+    /// Verifies parenthesized trait arguments and their output are shortened recursively.
+    #[test]
+    fn parenthesized_trait_arguments_are_shortened() {
+        const TYPE_NAME: &str = "dyn std::ops::Fn(std::vec::Vec<std::string::String>) -> std::option::Option<std::path::PathBuf>";
+
+        assert_eq!(
+            prettify_type_name(TYPE_NAME),
+            "dyn Fn(Vec<String>) -> Option<PathBuf>");
     }
 
     /// Verifies compiler descriptions outside Rust's type grammar remain informative.
