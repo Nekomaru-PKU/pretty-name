@@ -99,12 +99,24 @@ macro_rules! of_function {
 /// assert_eq!(pretty_name::of_type!(MyStruct), "MyStruct");
 /// assert_eq!(pretty_name::of_type!(MyGenericStruct<u32>), "MyGenericStruct<u32>");
 /// ```
+///
+/// Simple identifiers preserve source spelling, while generic, qualified, and `Self`
+/// types use [`type_name`](crate::type_name). This distinction is observable for type
+/// aliases. Call [`type_name`](crate::type_name) directly when semantic resolution is
+/// required consistently.
+///
+/// Invalid simple identifiers are rejected at compile time:
+///
+/// ```compile_fail
+/// let _ = pretty_name::of_type!(DefinitelyNotAType);
+/// ```
 #[macro_export]
 macro_rules! of_type {
     (Self) => {{
         $crate::type_name::<Self>()
     }};
     ($ty:ident) => {{
+        let _: ::core::marker::PhantomData<$ty> = ::core::marker::PhantomData;
         stringify!($ty)
     }};
     ($ty:ty) => {{
@@ -297,19 +309,38 @@ macro_rules! of_variant {
     }};
 }
 
-#[test] fn test_self() {
-    struct MyStruct {
-        my_field: u32,
-    }
-    impl MyStruct {
-        fn my_method<T>(&self) {}
-        fn test(&self) {
-            assert_eq!(of_type!(Self), "MyStruct");
-            assert_eq!(of_field!(Self::my_field), "MyStruct::my_field");
-            assert_eq!(of_method!(Self::my_method::<u32>), "MyStruct::my_method::<u32>");
-        }
+#[cfg(test)]
+mod tests {
+    /// Gets the source spelling of a possibly unsized generic type parameter.
+    fn generic_type_source_name<T: ?Sized>() -> &'static str {
+        crate::of_type!(T)
     }
 
-    let my_struct = MyStruct { my_field: 42 };
-    my_struct.test();
+    /// Verifies the existing `Self` behavior for types, fields, and generic methods.
+    #[test]
+    fn self_macros_resolve_the_concrete_owner() {
+        struct MyStruct {
+            my_field: u32,
+        }
+        impl MyStruct {
+            /// Method referenced by the name macro.
+            fn my_method<T>(&self) {}
+
+            /// Verifies every supported `Self`-based name within its valid scope.
+            fn verify_names(&self) {
+                assert_eq!(crate::of_type!(Self), "MyStruct");
+                assert_eq!(crate::of_field!(Self::my_field), "MyStruct::my_field");
+                assert_eq!(crate::of_method!(Self::my_method::<u32>), "MyStruct::my_method::<u32>");
+            }
+        }
+
+        let my_struct = MyStruct { my_field: 42 };
+        my_struct.verify_names();
+    }
+
+    /// Verifies validation does not accidentally impose an implicit `Sized` bound.
+    #[test]
+    fn simple_type_validation_accepts_unsized_generic_parameters() {
+        assert_eq!(generic_type_source_name::<str>(), "T");
+    }
 }
