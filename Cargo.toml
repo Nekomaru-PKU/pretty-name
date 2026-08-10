@@ -1,11 +1,11 @@
 [package]
 name = "pretty-name"
-version = "0.5.0"
+version = "1.0.0-alpha.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 keywords = ["name", "name-of", "name_of", "type-name", "type_name"]
 categories = ["development-tools"]
-repository = "https://github.com/Nekomaru-PKU/pretty-name"
+repository = "https://github.com/NekomaruQwQ/pretty-name"
 documentation = "https://docs.rs/pretty-name"
 description = "Get the human-friendly name of types, functions, methods, fields, and enum variants in a refactoring-safe way."
 
