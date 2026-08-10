@@ -8,7 +8,7 @@ Get the human-friendly name of types, functions, methods, fields, and enum varia
 
 ## Overview
 
-`pretty-name` provides a set of macros and functions for extracting names of Rust language constructs at compile time. Unlike `stringify!` or `std::any::type_name`, this crate offers:
+`pretty-name` provides macros and functions for extracting readable names of Rust language constructs. Depending on the syntax, a macro either returns a compile-time string literal or resolves and formats a type name at runtime. Unlike `stringify!` or `std::any::type_name`, this crate offers:
 
 ### Key Features
 
@@ -50,6 +50,7 @@ All functions and macros listed below yield `&'static str`.
 | What to get | Syntax | Example |
 |-------------|--------|---------|
 | **Type names** | | |
+| Type name from macro | `pretty_name::of_type!(T)` | `pretty_name::of_type!(Vec<i32>)` → `"Vec<i32>"` |
 | Type name | `type_name::<T>()` | `type_name::<Vec<i32>>()` → `"Vec<i32>"` |
 | Type name from value | `type_name_of_val(val)` | `type_name_of_val(&vec![1])` → `"Vec<i32>"` |
 | **Variables and constants** | | |
@@ -73,8 +74,8 @@ All functions and macros listed below yield `&'static str`.
 | Unit variant | `pretty_name::of_variant!(Type::Variant)` | `pretty_name::of_variant!(MyEnum::UnitVariant)` → `"MyEnum::UnitVariant"` |
 | Tuple variant | `pretty_name::of_variant!(Type::Variant(..))` | `pretty_name::of_variant!(MyEnum::TupleVariant(..))` → `"MyEnum::TupleVariant"` |
 | Struct variant | `pretty_name::of_variant!(Type::Variant{..})` | `pretty_name::of_variant!(MyEnum::StructVariant{..})` → `"MyEnum::StructVariant"` |
-| Variant (on generic type) | `pretty_name::of_variant!(Type::<T>::Variant)` | `pretty_name::of_variant!(MyEnum::<u32>::Variant)` → `"<MyEnum<u32>>::Variant"` |
-| Variant (on qualified type) | `pretty_name::of_variant!(<Type>::Variant)` | `pretty_name::of_variant!(<MyEnum<T>>::Variant)` → `"<MyEnum<T>>::Variant"` |
+| Variant (on generic type) | `pretty_name::of_variant!(<Type<T>>::Variant)` | `pretty_name::of_variant!(<MyEnum<u32>>::Variant)` → `"<MyEnum<u32>>::Variant"` |
+| Variant (on qualified type) | `pretty_name::of_variant!(<module::Type>::Variant)` | `pretty_name::of_variant!(<my_module::MyEnum>::Variant)` → `"<MyEnum>::Variant"` |
 
 **Notes:**
 - Macros resolve `Self` to the appropriate type when used inside `impl` blocks.
@@ -90,11 +91,12 @@ All functions and macros listed below yield `&'static str`.
   descriptions, are returned unchanged rather than replaced with an error marker.
 
 **To Get a String Literal:**
-Each of the macros listed above may yield a string literal:
+Simple macro forms yield string literals, while forms that require semantic type resolution return cached `&'static str` values:
 - `pretty_name::of_var!(var)` always yields a string literal.
+- `pretty_name::of_type!(Type)`: If *Type* is a single identifier other than `Self`.
 - `pretty_name::of_function!(function)`: If *function* contains a single identifier.
-- `pretty_name::of_method(Type::method)`: If *Type* and *method* both contain a single identifier.
-- `pretty_name::of_field(Type::field)` and `pretty_name::of_variant(Type::Variant | Type::Variant(..) | Type::Variant {..} )`: If *Type* contains a single identifier.
+- `pretty_name::of_method!(Type::method)`: If *Type* and *method* are both single identifiers and *Type* is not `Self`.
+- `pretty_name::of_field!(Type::field)` and `pretty_name::of_variant!(Type::Variant | Type::Variant(..) | Type::Variant {..})`: If *Type* is a single identifier other than `Self`.
 
 ## License
 

@@ -284,10 +284,8 @@ macro_rules! of_method {
 /// string literal at compile time. For more complex types, the macro uses runtime type
 /// name retrieval with caching.
 ///
-/// This macro currently expects only simple type identifiers.
-/// Support for more complex types requires the experimental feature `more_qualified_paths`
-/// (issue #86935 <https://github.com/rust-lang/rust/issues/86935>) to be stabilized (or
-/// enabled via `#![feature(more_qualified_paths)]` if using a nightly compiler).
+/// To use a qualified or generic owner type, wrap the type in angle brackets like
+/// `<module::MyEnum>::Variant` or `<MyEnum<T>>::Variant`. These forms work on stable Rust.
 ///
 /// # Examples
 /// ```rust
@@ -296,9 +294,14 @@ macro_rules! of_method {
 ///     TupleVariant(u32, String),
 ///     StructVariant { field: u32 },
 /// }
+/// enum MyGenericEnum<T> {
+///     UnitVariant,
+///     Value(T),
+/// }
 /// assert_eq!(pretty_name::of_variant!(MyEnum::UnitVariant), "MyEnum::UnitVariant");
 /// assert_eq!(pretty_name::of_variant!(MyEnum::TupleVariant(..)), "MyEnum::TupleVariant");
 /// assert_eq!(pretty_name::of_variant!(MyEnum::StructVariant {..}), "MyEnum::StructVariant");
+/// assert_eq!(pretty_name::of_variant!(<MyGenericEnum<u32>>::UnitVariant), "<MyGenericEnum<u32>>::UnitVariant");
 /// ```
 #[macro_export]
 macro_rules! of_variant {
