@@ -22,11 +22,11 @@ Get the human-friendly name of types, functions, methods, fields, and enum varia
 
 - **Catch typos at compile time**: Every referenced item is validated. Misspelled identifiers, fields, methods, or variants trigger compile errors instead of runtime failures.
 
-- **Evaluation at compile time** for common cases: Macros yield generated string literals generated at compile time for simple and mostly used cases-No runtime cost at all.
+- **Evaluation at compile time for common cases**: Macros yield string literals for the most frequently used simple forms, with no runtime cost.
 
 - **Natural, idiomatic syntax**: All syntax follows Rust conventions as closely as possible, making the macros feel like native language features.
 
-- **Thread-local caching**: All functions and macros cache their result in thread-local storage. Subsequent calls have zero runtime overhead.
+- **Process-wide caching**: Runtime-generated names are cached across threads. Repeated calls still perform a cache lookup, but do not repeat parsing, formatting, or allocation.
 
 ## Installation
 
@@ -34,7 +34,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-pretty-name = "0.4.1"
+pretty-name = "0.5"
 ```
 
 Or use `cargo add`:
@@ -79,6 +79,15 @@ All functions and macros listed below yield `&'static str`.
 **Notes:**
 - Macros resolve `Self` to the appropriate type when used inside `impl` blocks.
 - Use `<Type>` syntax for types with qualified paths or generic parameters.
+- `of_type!(Type)` preserves the source spelling of a simple identifier, while generic,
+  qualified, and `Self` forms use semantic type-name resolution. This difference is
+  observable for type aliases and generic parameters; use `type_name::<T>()` when you
+  consistently need the resolved type.
+- Type names are intended for diagnostics. Rust does not guarantee that compiler type
+  names are unique or stable between compiler versions, so they should not be used as
+  persistent identifiers or serialization keys.
+- Compiler-generated names that are not valid Rust type syntax, such as some closure
+  descriptions, are returned unchanged rather than replaced with an error marker.
 
 **To Get a String Literal:**
 Each of the macros listed above may yield a string literal:
