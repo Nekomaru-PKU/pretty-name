@@ -12,7 +12,7 @@ mod fixtures {
     pub fn generic_pair<T, U>() {}
 
     /// Gets the name of [`generic_function`] for the caller's concrete type.
-    pub fn generic_function_name<T>() -> &'static str {
+    pub fn generic_function_name<T>() -> pretty_name::FunctionName {
         pretty_name::of_function!(generic_function::<T>)
     }
 
@@ -40,22 +40,22 @@ mod fixtures {
         }
 
         /// Gets this owner's field name through `Self`.
-        pub fn self_field_name() -> &'static str {
+        pub fn self_field_name() -> pretty_name::MemberName {
             pretty_name::of_field!(Self::field)
         }
 
         /// Gets this owner's method name through `Self`.
-        pub fn self_method_name() -> &'static str {
+        pub fn self_method_name() -> pretty_name::MemberName {
             pretty_name::of_method!(Self::method)
         }
 
         /// Gets this owner's generic method name through `Self`.
-        pub fn self_generic_method_name<T>() -> &'static str {
+        pub fn self_generic_method_name<T>() -> pretty_name::MemberName {
             pretty_name::of_method!(Self::generic_method::<T>)
         }
     }
 
-    /// A generic owner used to verify qualified macro forms and cache keys.
+    /// A generic owner used to verify qualified macro forms.
     pub struct GenericOwner<T> {
         /// A field referenced by qualified field-name macros.
         pub value: T,
@@ -69,7 +69,7 @@ mod fixtures {
         pub fn generic_method<U>(&self) {}
 
         /// Gets the method name for this concrete `Self` type.
-        pub fn self_method_name() -> &'static str {
+        pub fn self_method_name() -> pretty_name::MemberName {
             pretty_name::of_method!(Self::method)
         }
     }
@@ -102,17 +102,17 @@ mod fixtures {
 
     impl<T> GenericEnum<T> {
         /// Gets the unit variant name through `Self`.
-        pub fn self_unit_name() -> &'static str {
+        pub fn self_unit_name() -> pretty_name::MemberName {
             pretty_name::of_variant!(Self::Unit)
         }
 
         /// Gets the tuple variant name through `Self`.
-        pub fn self_tuple_name() -> &'static str {
+        pub fn self_tuple_name() -> pretty_name::MemberName {
             pretty_name::of_variant!(Self::Tuple(..))
         }
 
         /// Gets the struct variant name through `Self`.
-        pub fn self_struct_name() -> &'static str {
+        pub fn self_struct_name() -> pretty_name::MemberName {
             pretty_name::of_variant!(Self::Struct {..})
         }
     }
@@ -131,6 +131,11 @@ use fixtures::{
     plain_function,
 };
 
+/// Builds owned expected names for tuple-based macro cases.
+macro_rules! names {
+    ($($name:literal),+ $(,)?) => { ($(String::from($name)),+) };
+}
+
 /// Verifies variable and constant identifiers retain their source spelling.
 #[test]
 fn variable_macro_returns_variable_and_constant_names() {
@@ -138,50 +143,52 @@ fn variable_macro_returns_variable_and_constant_names() {
 
     assert_eq!(
         (
-            pretty_name::of_var!(local_variable),
-            pretty_name::of_var!(NAMED_CONSTANT)),
-        ("local_variable", "NAMED_CONSTANT"));
+            pretty_name::of_var!(local_variable).to_string(),
+            pretty_name::of_var!(NAMED_CONSTANT).to_string()),
+        names!("local_variable", "NAMED_CONSTANT"));
 }
 
-/// Verifies the identifier-only function form returns a string literal name.
+/// Verifies the identifier-only function form returns a display value.
 #[test]
 fn function_macro_returns_plain_function_name() {
-    assert_eq!(pretty_name::of_function!(plain_function), "plain_function");
+    assert_eq!(
+        pretty_name::of_function!(plain_function).to_string(),
+        "plain_function");
 }
 
 /// Verifies the placeholder function form validates generics without displaying them.
 #[test]
 fn function_macro_omits_generic_arguments_for_the_placeholder_form() {
-    assert_eq!(pretty_name::of_function!(generic_function::<..>), "generic_function");
+    assert_eq!(
+        pretty_name::of_function!(generic_function::<..>).to_string(),
+        "generic_function");
 }
 
 /// Verifies explicit generic function arguments are shortened and comma-separated.
 #[test]
 fn function_macro_formats_explicit_generic_arguments() {
     assert_eq!(
-        pretty_name::of_function!(generic_pair::<std::vec::Vec<u8>, std::string::String>),
+        pretty_name::of_function!(
+            generic_pair::<std::vec::Vec<u8>, std::string::String>).to_string(),
         "generic_pair::<Vec<u8>, String>");
 }
 
-/// Verifies one function macro call site keeps monomorphized cache entries separate.
+/// Verifies one function macro call site resolves each monomorphization independently.
 #[test]
-fn function_cache_distinguishes_generic_monomorphizations() {
+fn function_values_distinguish_generic_monomorphizations() {
     assert_eq!(
-        (generic_function_name::<u8>(), generic_function_name::<u16>()),
-        ("generic_function::<u8>", "generic_function::<u16>"));
+        (
+            generic_function_name::<u8>().to_string(),
+            generic_function_name::<u16>().to_string()),
+        names!("generic_function::<u8>", "generic_function::<u16>"));
 }
 
-/// Verifies one function macro call site reuses its allocation across threads.
+/// Verifies a function name owns its arguments and can be formatted after construction.
 #[test]
-fn function_cache_reuses_one_result_across_threads() {
-    let first = std::thread::spawn(generic_function_name::<u32>)
-        .join()
-        .unwrap();
-    let second = std::thread::spawn(generic_function_name::<u32>)
-        .join()
-        .unwrap();
+fn function_values_can_be_stored_for_later_formatting() {
+    let name = generic_function_name::<std::vec::Vec<u32>>();
 
-    assert!(std::ptr::eq(first, second));
+    assert_eq!(name.to_string(), "generic_function::<Vec<u32>>");
 }
 
 /// Verifies simple and compound type forms both resolve aliases.
@@ -218,14 +225,14 @@ fn type_macro_accepts_unsized_generic_parameters() {
     assert_eq!(generic_type_name::<str>().to_string(), "str");
 }
 
-/// Verifies the simple field form returns its source-spelled owner and field.
+/// Verifies the simple field form resolves and uniformly qualifies its owner.
 #[test]
 fn field_macro_returns_simple_owner_and_field_name() {
     let owner = PlainOwner { field: 42 };
 
     assert_eq!(
-        (pretty_name::of_field!(PlainOwner::field), owner.field),
-        ("PlainOwner::field", 42));
+        (pretty_name::of_field!(PlainOwner::field).to_string(), owner.field),
+        ("<PlainOwner>::field".to_owned(), 42));
 }
 
 /// Verifies qualified generic field owners are semantically shortened.
@@ -234,23 +241,28 @@ fn field_macro_shortens_qualified_generic_owner() {
     let owner = GenericOwner { value: 42_u32 };
 
     assert_eq!(
-        (pretty_name::of_field!(<fixtures::GenericOwner<u32>>::value), owner.value),
-        ("<GenericOwner<u32>>::value", 42));
+        (
+            pretty_name::of_field!(
+                <fixtures::GenericOwner<u32>>::value).to_string(),
+            owner.value),
+        ("<GenericOwner<u32>>::value".to_owned(), 42));
 }
 
 /// Verifies the `Self` field form resolves the concrete owner.
 #[test]
 fn field_macro_resolves_self_to_the_concrete_owner() {
-    assert_eq!(PlainOwner::self_field_name(), "PlainOwner::field");
+    assert_eq!(PlainOwner::self_field_name().to_string(), "<PlainOwner>::field");
 }
 
-/// Verifies the simple method form returns its source-spelled owner and method.
+/// Verifies the simple method form resolves and uniformly qualifies its owner.
 #[test]
 fn method_macro_returns_simple_owner_and_method_name() {
     let owner = PlainOwner { field: 42 };
     owner.method();
 
-    assert_eq!(pretty_name::of_method!(PlainOwner::method), "PlainOwner::method");
+    assert_eq!(
+        pretty_name::of_method!(PlainOwner::method).to_string(),
+        "<PlainOwner>::method");
 }
 
 /// Verifies explicit generic method arguments are shortened.
@@ -260,8 +272,9 @@ fn method_macro_formats_explicit_generic_arguments() {
     owner.generic_method::<std::string::String>();
 
     assert_eq!(
-        pretty_name::of_method!(PlainOwner::generic_method::<std::vec::Vec<u8>>),
-        "PlainOwner::generic_method::<Vec<u8>>");
+        pretty_name::of_method!(
+            PlainOwner::generic_method::<std::vec::Vec<u8>>).to_string(),
+        "<PlainOwner>::generic_method::<Vec<u8>>");
 }
 
 /// Verifies qualified generic owners and method arguments are shortened together.
@@ -273,10 +286,12 @@ fn method_macro_shortens_qualified_owner_and_generic_arguments() {
 
     assert_eq!(
         (
-            pretty_name::of_method!(<fixtures::GenericOwner<u32>>::method),
             pretty_name::of_method!(
-                <fixtures::GenericOwner<u32>>::generic_method::<std::string::String>)),
-        (
+                <fixtures::GenericOwner<u32>>::method).to_string(),
+            pretty_name::of_method!(
+                <fixtures::GenericOwner<u32>>::generic_method::<
+                    std::string::String>).to_string()),
+        names!(
             "<GenericOwner<u32>>::method",
             "<GenericOwner<u32>>::generic_method::<String>"));
 }
@@ -286,19 +301,21 @@ fn method_macro_shortens_qualified_owner_and_generic_arguments() {
 fn method_macro_resolves_self_and_generic_arguments() {
     assert_eq!(
         (
-            PlainOwner::self_method_name(),
-            PlainOwner::self_generic_method_name::<std::vec::Vec<u8>>()),
-        ("PlainOwner::method", "PlainOwner::generic_method::<Vec<u8>>"));
+            PlainOwner::self_method_name().to_string(),
+            PlainOwner::self_generic_method_name::<std::vec::Vec<u8>>().to_string()),
+        names!(
+            "<PlainOwner>::method",
+            "<PlainOwner>::generic_method::<Vec<u8>>"));
 }
 
-/// Verifies `Self` method cache entries remain separate across owner monomorphizations.
+/// Verifies `Self` method values retain their resolved owner monomorphization.
 #[test]
-fn self_method_cache_distinguishes_generic_monomorphizations() {
+fn self_method_values_distinguish_generic_monomorphizations() {
     assert_eq!(
         (
-            GenericOwner::<u8>::self_method_name(),
-            GenericOwner::<u16>::self_method_name()),
-        ("GenericOwner<u8>::method", "GenericOwner<u16>::method"));
+            GenericOwner::<u8>::self_method_name().to_string(),
+            GenericOwner::<u16>::self_method_name().to_string()),
+        names!("<GenericOwner<u8>>::method", "<GenericOwner<u16>>::method"));
 }
 
 /// Verifies simple unit, tuple, and struct variants return the same owner format.
@@ -319,15 +336,15 @@ fn variant_macro_supports_every_simple_variant_shape() {
 
     assert_eq!(
         (
-            unit_name,
-            pretty_name::of_variant!(SimpleEnum::Tuple(..)),
-            pretty_name::of_variant!(SimpleEnum::Struct {..}),
+            unit_name.to_string(),
+            pretty_name::of_variant!(SimpleEnum::Tuple(..)).to_string(),
+            pretty_name::of_variant!(SimpleEnum::Struct {..}).to_string(),
             tuple_value,
             struct_value),
         (
-            "SimpleEnum::Unit",
-            "SimpleEnum::Tuple",
-            "SimpleEnum::Struct",
+            String::from("<SimpleEnum>::Unit"),
+            String::from("<SimpleEnum>::Tuple"),
+            String::from("<SimpleEnum>::Struct"),
             7,
             9));
 }
@@ -355,15 +372,15 @@ fn variant_macro_supports_stable_generic_variant_forms() {
 
     assert_eq!(
         (
-            unit_name,
-            pretty_name::of_variant!(GenericU32::Tuple(..)),
-            pretty_name::of_variant!(GenericU32::Struct {..}),
+            unit_name.to_string(),
+            pretty_name::of_variant!(GenericU32::Tuple(..)).to_string(),
+            pretty_name::of_variant!(GenericU32::Struct {..}).to_string(),
             tuple_value,
             struct_value),
         (
-            "<GenericEnum<u32>>::Unit",
-            "GenericU32::Tuple",
-            "GenericU32::Struct",
+            String::from("<GenericEnum<u32>>::Unit"),
+            String::from("<GenericEnum<u32>>::Tuple"),
+            String::from("<GenericEnum<u32>>::Struct"),
             7,
             9));
 }
@@ -373,21 +390,21 @@ fn variant_macro_supports_stable_generic_variant_forms() {
 fn variant_macro_supports_every_self_variant_shape() {
     assert_eq!(
         (
-            GenericEnum::<u32>::self_unit_name(),
-            GenericEnum::<u32>::self_tuple_name(),
-            GenericEnum::<u32>::self_struct_name()),
-        (
-            "GenericEnum<u32>::Unit",
-            "GenericEnum<u32>::Tuple",
-            "GenericEnum<u32>::Struct"));
+            GenericEnum::<u32>::self_unit_name().to_string(),
+            GenericEnum::<u32>::self_tuple_name().to_string(),
+            GenericEnum::<u32>::self_struct_name().to_string()),
+        names!(
+            "<GenericEnum<u32>>::Unit",
+            "<GenericEnum<u32>>::Tuple",
+            "<GenericEnum<u32>>::Struct"));
 }
 
-/// Verifies `Self` variant cache entries remain separate across owner monomorphizations.
+/// Verifies `Self` variant values retain their resolved owner monomorphization.
 #[test]
-fn self_variant_cache_distinguishes_generic_monomorphizations() {
+fn self_variant_values_distinguish_generic_monomorphizations() {
     assert_eq!(
         (
-            GenericEnum::<u8>::self_unit_name(),
-            GenericEnum::<u16>::self_unit_name()),
-        ("GenericEnum<u8>::Unit", "GenericEnum<u16>::Unit"));
+            GenericEnum::<u8>::self_unit_name().to_string(),
+            GenericEnum::<u16>::self_unit_name().to_string()),
+        names!("<GenericEnum<u8>>::Unit", "<GenericEnum<u16>>::Unit"));
 }

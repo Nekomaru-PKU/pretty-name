@@ -1,9 +1,20 @@
 #![doc = include_str!("../README.md")]
 
+mod name;
 mod type_name;
+pub use name::FunctionName;
+pub use name::IdentifierName;
+pub use name::MemberName;
 pub use type_name::TypeName;
 pub use type_name::type_name;
 pub use type_name::type_name_of_val;
+
+#[doc(hidden)]
+pub use name::function_name as __function_name;
+#[doc(hidden)]
+pub use name::identifier_name as __identifier_name;
+#[doc(hidden)]
+pub use name::member_name as __member_name;
 
 /// Internal helper macro for caching dynamically generated names process-wide.
 ///
@@ -47,7 +58,7 @@ macro_rules! __with_cache {
     }};
 }
 
-/// Get the name of the given local variable or constant as a string literal.
+/// Gets the validated source identifier of a local variable or constant.
 ///
 /// This macro checks that the identifier is valid in the current scope. If the identifier
 /// is renamed via refactoring tools, the macro call will be updated accordingly.
@@ -56,18 +67,18 @@ macro_rules! __with_cache {
 /// ```rust
 /// let my_variable = 42;
 /// const MY_CONSTANT: u32 = 42;
-/// assert_eq!(pretty_name::of_var!(my_variable), "my_variable");
-/// assert_eq!(pretty_name::of_var!(MY_CONSTANT), "MY_CONSTANT");
+/// assert_eq!(pretty_name::of_var!(my_variable).to_string(), "my_variable");
+/// assert_eq!(pretty_name::of_var!(MY_CONSTANT).to_string(), "MY_CONSTANT");
 /// ```
 #[macro_export]
 macro_rules! of_var {
     ($ident:ident) => {{
         let _ = &$ident;
-        stringify!($ident)
+        $crate::__identifier_name(stringify!($ident))
     }};
 }
 
-/// Get the name of the given function as a `&'static str`.
+/// Gets a validated function name with compiler-resolved generic type arguments.
 ///
 /// Use a `::<..>` placeholder to exclude generic parameters in the output, see examples.
 ///
@@ -76,11 +87,19 @@ macro_rules! of_var {
 /// fn my_function() {}
 /// fn my_generic_function<T>() {}
 /// fn my_generic_function_2args<T, U>() {}
-/// assert_eq!(pretty_name::of_function!(my_function), "my_function");
-/// assert_eq!(pretty_name::of_function!(my_generic_function::<..>), "my_generic_function");
-/// assert_eq!(pretty_name::of_function!(my_generic_function::<u32>), "my_generic_function::<u32>");
-/// assert_eq!(pretty_name::of_function!(my_generic_function_2args::<..>), "my_generic_function_2args");
-/// assert_eq!(pretty_name::of_function!(my_generic_function_2args::<u32, String>), "my_generic_function_2args::<u32, String>");
+/// assert_eq!(pretty_name::of_function!(my_function).to_string(), "my_function");
+/// assert_eq!(
+///     pretty_name::of_function!(my_generic_function::<..>).to_string(),
+///     "my_generic_function");
+/// assert_eq!(
+///     pretty_name::of_function!(my_generic_function::<u32>).to_string(),
+///     "my_generic_function::<u32>");
+/// assert_eq!(
+///     pretty_name::of_function!(my_generic_function_2args::<..>).to_string(),
+///     "my_generic_function_2args");
+/// assert_eq!(
+///     pretty_name::of_function!(my_generic_function_2args::<u32, String>).to_string(),
+///     "my_generic_function_2args::<u32, String>");
 /// ```
 #[macro_export]
 macro_rules! of_function {
@@ -93,20 +112,21 @@ macro_rules! of_function {
     //     currently we cannot use this approach for the general case.
     ($ident:ident) => {{
         let _ = &$ident;
-        stringify!($ident)
+        $crate::__function_name(
+            stringify!($ident),
+            ::std::boxed::Box::new([]))
     }};
     ($ident:ident ::<..>) => {{
         #[allow(unused)] use $ident;
-        stringify!($ident)
+        $crate::__function_name(
+            stringify!($ident),
+            ::std::boxed::Box::new([]))
     }};
     ($ident:ident ::<$($arg:ty),*>) => {{
         let _ = &$ident::<$($arg),*>;
-        $crate::__with_cache!(
-            [stringify!($ident), $(::std::any::type_name::<$arg>()),*] =>
-            format!(
-                "{}::<{}>",
-                stringify!($ident),
-                vec![$($crate::type_name::<$arg>().to_string()),*].join(", ")))
+        $crate::__function_name(
+            stringify!($ident),
+            ::std::boxed::Box::new([$($crate::type_name::<$arg>()),*]))
     }};
 }
 
@@ -137,17 +157,13 @@ macro_rules! of_type {
     }};
 }
 
-/// Get the name of the given struct field like `Type::field` as a `&'static str`.
+/// Gets a validated field name with its compiler-resolved owner.
 ///
 /// This macro resolves `Self` to the appropriate type when used inside an `impl` block.
 ///
 /// By default, this macro expects a simple type identifier like `Type::field`. To use
 /// types with qualified path or generic parameters, wrap the type in angle brackets
 /// like `<Type<T>>::field` or `<module::Type>::field`.
-///
-/// If the *Type* part is a single identifier and is not `Self`, the macro expands to a
-/// string literal at compile time. For more complex types, the macro uses runtime type
-/// name retrieval with caching.
 ///
 /// # Examples
 /// ```rust
@@ -157,40 +173,45 @@ macro_rules! of_type {
 /// struct MyGenericStruct<T> {
 ///     my_field: T,
 /// }
-/// assert_eq!(pretty_name::of_field!(MyStruct::my_field), "MyStruct::my_field");
-/// assert_eq!(pretty_name::of_field!(<MyGenericStruct<u32>>::my_field), "<MyGenericStruct<u32>>::my_field");
+/// assert_eq!(
+///     pretty_name::of_field!(MyStruct::my_field).to_string(),
+///     "<MyStruct>::my_field");
+/// assert_eq!(
+///     pretty_name::of_field!(<MyGenericStruct<u32>>::my_field).to_string(),
+///     "<MyGenericStruct<u32>>::my_field");
 /// ```
 #[macro_export]
 macro_rules! of_field {
     (Self:: $field:ident) => {{
         let _ = |obj: Self| { let _ = &obj.$field; };
-        $crate::__with_cache!(
-            [::std::any::type_name::<Self>(), stringify!($field)] =>
-            format!("{}::{}", $crate::type_name::<Self>(), stringify!($field)))
+        $crate::__member_name(
+            $crate::type_name::<Self>(),
+            stringify!($field),
+            ::std::boxed::Box::new([]))
     }};
     ($ty:ident :: $field:ident) => {{
         let _ = |obj: $ty| { let _ = &obj.$field; };
-        concat!(stringify!($ty), "::", stringify!($field))
+        $crate::__member_name(
+            $crate::type_name::<$ty>(),
+            stringify!($field),
+            ::std::boxed::Box::new([]))
     }};
     (<$ty:ty> :: $field:ident) => {{
         let _ = |obj: $ty| { let _ = &obj.$field; };
-        $crate::__with_cache!(
-            [::std::any::type_name::<$ty>(), stringify!($field)] =>
-            format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($field)))
+        $crate::__member_name(
+            $crate::type_name::<$ty>(),
+            stringify!($field),
+            ::std::boxed::Box::new([]))
     }};
 }
 
-/// Get the name of the given method like `Type::method` as a `&'static str`.
+/// Gets a validated method name with its compiler-resolved owner and type arguments.
 ///
 /// This macro resolves `Self` to the appropriate type when used inside an `impl` block.
 ///
 /// By default, this macro expects a simple type identifier like `Type::field`. To use
 /// types with qualified path or generic parameters, wrap the type in angle brackets
 /// like `<Type<T>>::field` or `<module::Type>::field`.
-///
-/// If both the *Type* and *method* parts are single identifiers and the *Type* part is
-/// not `Self`, the macro expands to a string literal at compile time. For more complex
-/// types, the macro uses runtime type name retrieval with caching.
 ///
 /// Due to implementation limitations, you cannot use the `::<..>` placeholder to exclude
 /// generic parameters. Use explicit type arguments instead.
@@ -207,70 +228,66 @@ macro_rules! of_field {
 ///     fn my_method(&self) {}
 ///     fn my_generic_method<U>(&self) {}
 /// }
-/// assert_eq!(pretty_name::of_method!(MyStruct::my_method), "MyStruct::my_method");
-/// assert_eq!(pretty_name::of_method!(MyStruct::my_generic_method::<u32>), "MyStruct::my_generic_method::<u32>");
-/// assert_eq!(pretty_name::of_method!(<MyGenericStruct<u32>>::my_method), "<MyGenericStruct<u32>>::my_method");
-/// assert_eq!(pretty_name::of_method!(<MyGenericStruct<u32>>::my_generic_method::<String>), "<MyGenericStruct<u32>>::my_generic_method::<String>");
+/// assert_eq!(
+///     pretty_name::of_method!(MyStruct::my_method).to_string(),
+///     "<MyStruct>::my_method");
+/// assert_eq!(
+///     pretty_name::of_method!(MyStruct::my_generic_method::<u32>).to_string(),
+///     "<MyStruct>::my_generic_method::<u32>");
+/// assert_eq!(
+///     pretty_name::of_method!(<MyGenericStruct<u32>>::my_method).to_string(),
+///     "<MyGenericStruct<u32>>::my_method");
+/// assert_eq!(
+///     pretty_name::of_method!(
+///         <MyGenericStruct<u32>>::my_generic_method::<String>).to_string(),
+///     "<MyGenericStruct<u32>>::my_generic_method::<String>");
 /// ```
 #[macro_export]
 macro_rules! of_method {
     (Self:: $method:ident) => {{
         let _ = &Self::$method;
-        $crate::__with_cache!(
-            [::std::any::type_name::<Self>(), stringify!($method)] =>
-            format!("{}::{}", $crate::type_name::<Self>(), stringify!($method)))
+        $crate::__member_name(
+            $crate::type_name::<Self>(),
+            stringify!($method),
+            ::std::boxed::Box::new([]))
     }};
     ($ty:ident :: $method:ident) => {{
         let _ = &$ty::$method;
-        concat!(stringify!($ty), "::", stringify!($method))
+        $crate::__member_name(
+            $crate::type_name::<$ty>(),
+            stringify!($method),
+            ::std::boxed::Box::new([]))
     }};
     ($ty:ident :: $method:ident ::<$($arg:ty),*>) => {{
         let _ = &$ty::$method::<$($arg),*>;
-        $crate::__with_cache!(
-            [
-                ::std::any::type_name::<$ty>(),
-                stringify!($method),
-                $(::std::any::type_name::<$arg>()),*
-            ] =>
-            format!(
-                "{}::{}::<{}>",
-                $crate::type_name::<$ty>(),
-                stringify!($method),
-                vec![$($crate::type_name::<$arg>().to_string()),*].join(", ")))
+        $crate::__member_name(
+            $crate::type_name::<$ty>(),
+            stringify!($method),
+            ::std::boxed::Box::new([$($crate::type_name::<$arg>()),*]))
     }};
 
     (<$ty:ty> :: $method:ident) => {{
         let _ = &<$ty>::$method;
-        $crate::__with_cache!(
-            [::std::any::type_name::<$ty>(), stringify!($method)] =>
-            format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($method)))
+        $crate::__member_name(
+            $crate::type_name::<$ty>(),
+            stringify!($method),
+            ::std::boxed::Box::new([]))
     }};
     (<$ty:ty> :: $method:ident ::<$($arg:ty),*>) => {{
         let _ = &<$ty>::$method::<$($arg),*>;
-        $crate::__with_cache!(
-            [
-                ::std::any::type_name::<$ty>(),
-                stringify!($method),
-                $(::std::any::type_name::<$arg>()),*
-            ] =>
-            format!(
-                "<{}>::{}::<{}>",
-                $crate::type_name::<$ty>(),
-                stringify!($method),
-                vec![$($crate::type_name::<$arg>().to_string()),*].join(", ")))
+        $crate::__member_name(
+            $crate::type_name::<$ty>(),
+            stringify!($method),
+            ::std::boxed::Box::new([$($crate::type_name::<$arg>()),*]))
     }};
 }
 
-/// Get the name of the given enum variant as a `&'static str`.
+/// Gets a validated enum variant name with its compiler-resolved owner.
 ///
 /// This macro resolves `Self` to the appropriate type when used inside an `impl` block.
 ///
 /// This macros supports both unit variants, tuple variants and struct variants. See
 /// examples for syntax for each variant type.
-///
-/// If the *Type* part is a single identifier and is not `Self`, the macro expands to a
-/// string literal at compile time. For more complex types, the macro uses runtime type
-/// name retrieval with caching.
 ///
 /// To use a qualified or generic owner type, wrap the type in angle brackets like
 /// `<module::MyEnum>::Variant` or `<MyEnum<T>>::Variant`. These forms work on stable Rust.
@@ -286,61 +303,84 @@ macro_rules! of_method {
 ///     UnitVariant,
 ///     Value(T),
 /// }
-/// assert_eq!(pretty_name::of_variant!(MyEnum::UnitVariant), "MyEnum::UnitVariant");
-/// assert_eq!(pretty_name::of_variant!(MyEnum::TupleVariant(..)), "MyEnum::TupleVariant");
-/// assert_eq!(pretty_name::of_variant!(MyEnum::StructVariant {..}), "MyEnum::StructVariant");
-/// assert_eq!(pretty_name::of_variant!(<MyGenericEnum<u32>>::UnitVariant), "<MyGenericEnum<u32>>::UnitVariant");
+/// assert_eq!(
+///     pretty_name::of_variant!(MyEnum::UnitVariant).to_string(),
+///     "<MyEnum>::UnitVariant");
+/// assert_eq!(
+///     pretty_name::of_variant!(MyEnum::TupleVariant(..)).to_string(),
+///     "<MyEnum>::TupleVariant");
+/// assert_eq!(
+///     pretty_name::of_variant!(MyEnum::StructVariant {..}).to_string(),
+///     "<MyEnum>::StructVariant");
+/// assert_eq!(
+///     pretty_name::of_variant!(<MyGenericEnum<u32>>::UnitVariant).to_string(),
+///     "<MyGenericEnum<u32>>::UnitVariant");
 /// ```
 #[macro_export]
 macro_rules! of_variant {
     (Self:: $variant:ident) => {{
         let _ = |obj: Self| match obj { Self::$variant => {}, _ => {} };
-        $crate::__with_cache!(
-            [::std::any::type_name::<Self>(), stringify!($variant)] =>
-            format!("{}::{}", $crate::type_name::<Self>(), stringify!($variant)))
+        $crate::__member_name(
+            $crate::type_name::<Self>(),
+            stringify!($variant),
+            ::std::boxed::Box::new([]))
     }};
     (Self:: $variant:ident (..)) => {{
         let _ = |obj: Self| match obj { Self::$variant(..) => {}, _ => {} };
-        $crate::__with_cache!(
-            [::std::any::type_name::<Self>(), stringify!($variant)] =>
-            format!("{}::{}", $crate::type_name::<Self>(), stringify!($variant)))
+        $crate::__member_name(
+            $crate::type_name::<Self>(),
+            stringify!($variant),
+            ::std::boxed::Box::new([]))
     }};
     (Self:: $variant:ident {..}) => {{
         let _ = |obj: Self| match obj { Self::$variant { .. } => {}, _ => {} };
-        $crate::__with_cache!(
-            [::std::any::type_name::<Self>(), stringify!($variant)] =>
-            format!("{}::{}", $crate::type_name::<Self>(), stringify!($variant)))
+        $crate::__member_name(
+            $crate::type_name::<Self>(),
+            stringify!($variant),
+            ::std::boxed::Box::new([]))
     }};
 
     ($ty:ident :: $variant:ident) => {{
         let _ = |obj: $ty| match obj { $ty::$variant => {}, _ => {} };
-        concat!(stringify!($ty), "::", stringify!($variant))
+        $crate::__member_name(
+            $crate::type_name::<$ty>(),
+            stringify!($variant),
+            ::std::boxed::Box::new([]))
     }};
     ($ty:ident :: $variant:ident (..)) => {{
         let _ = |obj: $ty| match obj { $ty::$variant(..) => {}, _ => {} };
-        concat!(stringify!($ty), "::", stringify!($variant))
+        $crate::__member_name(
+            $crate::type_name::<$ty>(),
+            stringify!($variant),
+            ::std::boxed::Box::new([]))
     }};
     ($ty:ident :: $variant:ident {..}) => {{
         let _ = |obj: $ty| match obj { $ty::$variant { .. } => {}, _ => {} };
-        concat!(stringify!($ty), "::", stringify!($variant))
+        $crate::__member_name(
+            $crate::type_name::<$ty>(),
+            stringify!($variant),
+            ::std::boxed::Box::new([]))
     }};
 
     (<$ty:ty> :: $variant:ident) => {{
         let _ = |obj: $ty| match obj { <$ty>::$variant => {}, _ => {} };
-        $crate::__with_cache!(
-            [::std::any::type_name::<$ty>(), stringify!($variant)] =>
-            format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($variant)))
+        $crate::__member_name(
+            $crate::type_name::<$ty>(),
+            stringify!($variant),
+            ::std::boxed::Box::new([]))
     }};
     (<$ty:ty> :: $variant:ident (..)) => {{
         let _ = |obj: $ty| match obj { <$ty>::$variant(..) => {}, _ => {} };
-        $crate::__with_cache!(
-            [::std::any::type_name::<$ty>(), stringify!($variant)] =>
-            format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($variant)))
+        $crate::__member_name(
+            $crate::type_name::<$ty>(),
+            stringify!($variant),
+            ::std::boxed::Box::new([]))
     }};
     (<$ty:ty> :: $variant:ident {..}) => {{
         let _ = |obj: $ty| match obj { <$ty>::$variant { .. } => {}, _ => {} };
-        $crate::__with_cache!(
-            [::std::any::type_name::<$ty>(), stringify!($variant)] =>
-            format!("<{}>::{}", $crate::type_name::<$ty>(), stringify!($variant)))
+        $crate::__member_name(
+            $crate::type_name::<$ty>(),
+            stringify!($variant),
+            ::std::boxed::Box::new([]))
     }};
 }

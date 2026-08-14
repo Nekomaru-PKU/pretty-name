@@ -8,7 +8,7 @@ Get the human-friendly name of types, functions, methods, fields, and enum varia
 
 ## Overview
 
-`pretty-name` provides macros and functions for extracting readable names of Rust language constructs. Type operations return an opaque value that implements `Display`; the remaining name macros still use their legacy string results while the M1 redesign is completed. Unlike `stringify!` or `std::any::type_name`, this crate offers:
+`pretty-name` provides macros and functions for extracting readable names of Rust language constructs. Every naming operation returns a category-specific opaque value that implements `Display`. Unlike `stringify!` or `std::any::type_name`, this crate offers:
 
 ### Key Features
 
@@ -22,11 +22,11 @@ Get the human-friendly name of types, functions, methods, fields, and enum varia
 
 - **Catch typos at compile time**: Every referenced item is validated. Misspelled identifiers, fields, methods, or variants trigger compile errors instead of runtime failures.
 
-- **Evaluation at compile time for common cases**: Macros yield string literals for the most frequently used simple forms, with no runtime cost.
+- **Structured name values**: Identifier, function, member, and type names retain their semantic components until they are formatted.
 
 - **Natural, idiomatic syntax**: All syntax follows Rust conventions as closely as possible, making the macros feel like native language features.
 
-- **Deferred type formatting**: Resolved type descriptions are stored without a cache and parsed whenever their `Display` representation is requested.
+- **Deferred formatting without global state**: Name values are assembled locally and formatted on demand without a process-wide cache.
 
 ## Installation
 
@@ -45,7 +45,7 @@ cargo add pretty-name
 
 ## Usage
 
-Type operations yield `TypeName`, which can be formatted with `{}` or converted with the standard `.to_string()`. Other macros retain their legacy `&'static str` results until their M1 stages are complete.
+Naming operations yield opaque values that can be formatted with `{}` or converted with the standard `.to_string()`.
 
 | What to get | Syntax | Example |
 |-------------|--------|---------|
@@ -54,28 +54,28 @@ Type operations yield `TypeName`, which can be formatted with `{}` or converted 
 | Type name | `type_name::<T>()` | `type_name::<Vec<i32>>().to_string()` → `"Vec<i32>"` |
 | Type name from value | `type_name_of_val(val)` | `type_name_of_val(&vec![1]).to_string()` → `"Vec<i32>"` |
 | **Variables and constants** | | |
-| Variable or constant name | `pretty_name::of_var!(ident)` | `pretty_name::of_var!(my_var)` → `"my_var"` |
+| Variable or constant name | `pretty_name::of_var!(ident)` | `pretty_name::of_var!(my_var).to_string()` → `"my_var"` |
 | **Functions** | | |
-| Function name | `pretty_name::of_function!(ident)` | `pretty_name::of_function!(my_func)` → `"my_func"` |
-| Generic function (exclude params) | `pretty_name::of_function!(ident::<..>)` | `pretty_name::of_function!(my_func::<..>)` → `"my_func"` |
-| Generic function (include params) | `pretty_name::of_function!(ident::<T, U>)` | `pretty_name::of_function!(my_func::<u32, String>)` → `"my_func::<u32, String>"` |
+| Function name | `pretty_name::of_function!(ident)` | `pretty_name::of_function!(my_func).to_string()` → `"my_func"` |
+| Generic function (exclude params) | `pretty_name::of_function!(ident::<..>)` | `pretty_name::of_function!(my_func::<..>).to_string()` → `"my_func"` |
+| Generic function (include params) | `pretty_name::of_function!(ident::<T, U>)` | `pretty_name::of_function!(my_func::<u32, String>).to_string()` → `"my_func::<u32, String>"` |
 | **Struct fields** | | |
-| Field name | `pretty_name::of_field!(Type::field)` | `pretty_name::of_field!(MyStruct::field)` → `"MyStruct::field"` |
-| Field name (on generic type) | `pretty_name::of_field!(<Type<T>>::field)` | `pretty_name::of_field!(<MyStruct<T>>::field)` → `"<MyStruct<T>>::field"` |
-| Field name (on qualified type) | `pretty_name::of_field!(<module::Type>::field)` | `pretty_name::of_field!(<my_module::MyStruct>::field)` → `"<my_module::MyStruct>::field"` |
+| Field name | `pretty_name::of_field!(Type::field)` | `pretty_name::of_field!(MyStruct::field).to_string()` → `"<MyStruct>::field"` |
+| Field name (on generic type) | `pretty_name::of_field!(<Type<T>>::field)` | `pretty_name::of_field!(<MyStruct<T>>::field).to_string()` → `"<MyStruct<T>>::field"` |
+| Field name (on qualified type) | `pretty_name::of_field!(<module::Type>::field)` | `pretty_name::of_field!(<my_module::MyStruct>::field).to_string()` → `"<MyStruct>::field"` |
 | **Methods** | | |
-| Method name | `pretty_name::of_method!(Type::method)` | `pretty_name::of_method!(MyStruct::method)` → `"MyStruct::method"` |
-| Method (on generic type) | `pretty_name::of_method!(<Type<T>>::method)` | `pretty_name::of_method!(<MyStruct<T>>::method)` → `"<MyStruct<T>>::method"` |
-| Method (on qualified type) | `pretty_name::of_method!(<module::Type>::method)` | `pretty_name::of_method!(<my_module::MyStruct>::method)` → `"<my_module::MyStruct>::method"` |
-| Generic method | `pretty_name::of_method!(Type::method::<T>)` | `pretty_name::of_method!(MyStruct::method::<u32>)` → `"MyStruct::method::<u32>"` |
-| Generic method (on generic type) | `pretty_name::of_method!(<Type<T>>::method::<U>)` | `pretty_name::of_method!(<MyStruct<T>>::method::<u32>)` → `"<MyStruct<T>>::method::<u32>"` |
-| Generic method (on qualified type) | `pretty_name::of_method!(<module::Type>::method::<T>)` | `pretty_name::of_method!(<my_module::MyStruct>::method::<u32>)` → `"<my_module::MyStruct>::method::<u32>"` |
+| Method name | `pretty_name::of_method!(Type::method)` | `pretty_name::of_method!(MyStruct::method).to_string()` → `"<MyStruct>::method"` |
+| Method (on generic type) | `pretty_name::of_method!(<Type<T>>::method)` | `pretty_name::of_method!(<MyStruct<T>>::method).to_string()` → `"<MyStruct<T>>::method"` |
+| Method (on qualified type) | `pretty_name::of_method!(<module::Type>::method)` | `pretty_name::of_method!(<my_module::MyStruct>::method).to_string()` → `"<MyStruct>::method"` |
+| Generic method | `pretty_name::of_method!(Type::method::<T>)` | `pretty_name::of_method!(MyStruct::method::<u32>).to_string()` → `"<MyStruct>::method::<u32>"` |
+| Generic method (on generic type) | `pretty_name::of_method!(<Type<T>>::method::<U>)` | `pretty_name::of_method!(<MyStruct<T>>::method::<u32>).to_string()` → `"<MyStruct<T>>::method::<u32>"` |
+| Generic method (on qualified type) | `pretty_name::of_method!(<module::Type>::method::<T>)` | `pretty_name::of_method!(<my_module::MyStruct>::method::<u32>).to_string()` → `"<MyStruct>::method::<u32>"` |
 | **Enum variants** | | |
-| Unit variant | `pretty_name::of_variant!(Type::Variant)` | `pretty_name::of_variant!(MyEnum::UnitVariant)` → `"MyEnum::UnitVariant"` |
-| Tuple variant | `pretty_name::of_variant!(Type::Variant(..))` | `pretty_name::of_variant!(MyEnum::TupleVariant(..))` → `"MyEnum::TupleVariant"` |
-| Struct variant | `pretty_name::of_variant!(Type::Variant{..})` | `pretty_name::of_variant!(MyEnum::StructVariant{..})` → `"MyEnum::StructVariant"` |
-| Variant (on generic type) | `pretty_name::of_variant!(<Type<T>>::Variant)` | `pretty_name::of_variant!(<MyEnum<u32>>::Variant)` → `"<MyEnum<u32>>::Variant"` |
-| Variant (on qualified type) | `pretty_name::of_variant!(<module::Type>::Variant)` | `pretty_name::of_variant!(<my_module::MyEnum>::Variant)` → `"<MyEnum>::Variant"` |
+| Unit variant | `pretty_name::of_variant!(Type::Variant)` | `pretty_name::of_variant!(MyEnum::UnitVariant).to_string()` → `"<MyEnum>::UnitVariant"` |
+| Tuple variant | `pretty_name::of_variant!(Type::Variant(..))` | `pretty_name::of_variant!(MyEnum::TupleVariant(..)).to_string()` → `"<MyEnum>::TupleVariant"` |
+| Struct variant | `pretty_name::of_variant!(Type::Variant{..})` | `pretty_name::of_variant!(MyEnum::StructVariant{..}).to_string()` → `"<MyEnum>::StructVariant"` |
+| Variant (on generic type) | `pretty_name::of_variant!(<Type<T>>::Variant)` | `pretty_name::of_variant!(<MyEnum<u32>>::Variant).to_string()` → `"<MyEnum<u32>>::Variant"` |
+| Variant (on qualified type) | `pretty_name::of_variant!(<module::Type>::Variant)` | `pretty_name::of_variant!(<my_module::MyEnum>::Variant).to_string()` → `"<MyEnum>::Variant"` |
 
 **Notes:**
 - Macros resolve `Self` to the appropriate type when used inside `impl` blocks.
@@ -87,13 +87,6 @@ Type operations yield `TypeName`, which can be formatted with `{}` or converted 
   persistent identifiers or serialization keys.
 - Compiler-generated names that are not valid Rust type syntax, such as some closure
   descriptions, are returned unchanged rather than replaced with an error marker.
-
-**To Get a String Literal:**
-Some legacy identifier and compound macro forms still yield string literals, while forms that require compound semantic type resolution return cached `&'static str` values:
-- `pretty_name::of_var!(var)` always yields a string literal.
-- `pretty_name::of_function!(function)`: If *function* contains a single identifier.
-- `pretty_name::of_method!(Type::method)`: If *Type* and *method* are both single identifiers and *Type* is not `Self`.
-- `pretty_name::of_field!(Type::field)` and `pretty_name::of_variant!(Type::Variant | Type::Variant(..) | Type::Variant {..})`: If *Type* is a single identifier other than `Self`.
 
 ## License
 
