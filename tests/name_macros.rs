@@ -5,7 +5,7 @@ mod fixtures {
     /// A plain function used to verify identifier-only function names.
     pub fn plain_function() {}
 
-    /// A generic function used to verify explicit and omitted type arguments.
+    /// A generic function used to verify explicit type arguments.
     pub fn generic_function<T>() {}
 
     /// A two-argument generic function used to verify argument formatting.
@@ -124,7 +124,7 @@ use fixtures::{
     NAMED_CONSTANT,
     PlainOwner,
     SimpleEnum,
-    generic_function,
+    generic_function as renamed_generic_function,
     generic_function_name,
     generic_pair,
     generic_type_name,
@@ -156,14 +156,6 @@ fn function_macro_returns_plain_function_name() {
         "plain_function");
 }
 
-/// Verifies the placeholder function form validates generics without displaying them.
-#[test]
-fn function_macro_omits_generic_arguments_for_the_placeholder_form() {
-    assert_eq!(
-        pretty_name::of_function!(generic_function::<..>).to_string(),
-        "generic_function");
-}
-
 /// Verifies explicit generic function arguments are shortened and comma-separated.
 #[test]
 fn function_macro_formats_explicit_generic_arguments() {
@@ -171,6 +163,14 @@ fn function_macro_formats_explicit_generic_arguments() {
         pretty_name::of_function!(
             generic_pair::<std::vec::Vec<u8>, std::string::String>).to_string(),
         "generic_pair::<Vec<u8>, String>");
+}
+
+/// Verifies a renamed import is validated semantically while retaining its source name.
+#[test]
+fn function_macro_preserves_a_renamed_import_identifier() {
+    assert_eq!(
+        pretty_name::of_function!(renamed_generic_function::<u32>).to_string(),
+        "renamed_generic_function::<u32>");
 }
 
 /// Verifies one function macro call site resolves each monomorphization independently.
@@ -248,6 +248,17 @@ fn field_macro_shortens_qualified_generic_owner() {
         ("<GenericOwner<u32>>::value".to_owned(), 42));
 }
 
+/// Verifies field owners resolve through type aliases rather than source spelling.
+#[test]
+fn field_macro_resolves_an_owner_alias() {
+    /// An owner alias whose source spelling must not leak into semantic output.
+    type OwnerAlias = PlainOwner;
+
+    assert_eq!(
+        pretty_name::of_field!(OwnerAlias::field).to_string(),
+        "<PlainOwner>::field");
+}
+
 /// Verifies the `Self` field form resolves the concrete owner.
 #[test]
 fn field_macro_resolves_self_to_the_concrete_owner() {
@@ -294,6 +305,17 @@ fn method_macro_shortens_qualified_owner_and_generic_arguments() {
         names!(
             "<GenericOwner<u32>>::method",
             "<GenericOwner<u32>>::generic_method::<String>"));
+}
+
+/// Verifies method owners resolve through type aliases rather than source spelling.
+#[test]
+fn method_macro_resolves_an_owner_alias() {
+    /// An owner alias whose source spelling must not leak into semantic output.
+    type OwnerAlias = PlainOwner;
+
+    assert_eq!(
+        pretty_name::of_method!(OwnerAlias::method).to_string(),
+        "<PlainOwner>::method");
 }
 
 /// Verifies both non-generic and generic `Self` method forms resolve their owner.

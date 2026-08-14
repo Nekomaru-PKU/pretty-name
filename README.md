@@ -18,7 +18,7 @@ Get the human-friendly name of types, functions, methods, fields, and enum varia
 
 - **Full IDE auto-completion support**: Get all your IDE's auto-completion features even inside macros. No more guessing or manual typing.
 
-- **Full support for generics, qualified paths, and `Self`**: Works seamlessly with generic types and module-qualified names, and resolves `Self` to the appropriate type when used inside `impl` blocks—handle any type your code needs.
+- **Semantic support for generics, qualified paths, and `Self`**: Resolves generic types and module-qualified names through the compiler, and resolves `Self` to the concrete type inside `impl` blocks.
 
 - **Catch typos at compile time**: Every referenced item is validated. Misspelled identifiers, fields, methods, or variants trigger compile errors instead of runtime failures.
 
@@ -57,7 +57,6 @@ Naming operations yield opaque values that can be formatted with `{}` or convert
 | Variable or constant name | `pretty_name::of_var!(ident)` | `pretty_name::of_var!(my_var).to_string()` → `"my_var"` |
 | **Functions** | | |
 | Function name | `pretty_name::of_function!(ident)` | `pretty_name::of_function!(my_func).to_string()` → `"my_func"` |
-| Generic function (exclude params) | `pretty_name::of_function!(ident::<..>)` | `pretty_name::of_function!(my_func::<..>).to_string()` → `"my_func"` |
 | Generic function (include params) | `pretty_name::of_function!(ident::<T, U>)` | `pretty_name::of_function!(my_func::<u32, String>).to_string()` → `"my_func::<u32, String>"` |
 | **Struct fields** | | |
 | Field name | `pretty_name::of_field!(Type::field)` | `pretty_name::of_field!(MyStruct::field).to_string()` → `"<MyStruct>::field"` |
@@ -80,6 +79,9 @@ Naming operations yield opaque values that can be formatted with `{}` or convert
 **Notes:**
 - Macros resolve `Self` to the appropriate type when used inside `impl` blocks.
 - Use `<Type>` syntax for types with qualified paths or generic parameters.
+- Generic functions and methods require every caller-provided generic argument to be
+  written explicitly as a concrete type. Inferred arguments, direct const arguments,
+  omitted arguments, and the legacy `::<..>` placeholder are unsupported.
 - `of_type!(Type)` always uses semantic type-name resolution. Aliases, renamed imports,
   generic parameters, and `Self` therefore use their compiler-resolved types.
 - Type names are intended for diagnostics. Rust does not guarantee that compiler type

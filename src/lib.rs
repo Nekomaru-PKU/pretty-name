@@ -70,6 +70,12 @@ macro_rules! __with_cache {
 /// assert_eq!(pretty_name::of_var!(my_variable).to_string(), "my_variable");
 /// assert_eq!(pretty_name::of_var!(MY_CONSTANT).to_string(), "MY_CONSTANT");
 /// ```
+///
+/// Missing identifiers are rejected at compile time:
+///
+/// ```compile_fail
+/// let _ = pretty_name::of_var!(missing_variable);
+/// ```
 #[macro_export]
 macro_rules! of_var {
     ($ident:ident) => {{
@@ -80,7 +86,10 @@ macro_rules! of_var {
 
 /// Gets a validated function name with compiler-resolved generic type arguments.
 ///
-/// Use a `::<..>` placeholder to exclude generic parameters in the output, see examples.
+/// Non-generic functions use the identifier-only form. Generic functions must specify
+/// every caller-provided generic argument, and every argument must be a concrete type.
+/// Inferred arguments, direct const arguments, and the legacy `::<..>` placeholder are
+/// intentionally unsupported.
 ///
 /// # Examples
 /// ```rust
@@ -89,40 +98,55 @@ macro_rules! of_var {
 /// fn my_generic_function_2args<T, U>() {}
 /// assert_eq!(pretty_name::of_function!(my_function).to_string(), "my_function");
 /// assert_eq!(
-///     pretty_name::of_function!(my_generic_function::<..>).to_string(),
-///     "my_generic_function");
-/// assert_eq!(
 ///     pretty_name::of_function!(my_generic_function::<u32>).to_string(),
 ///     "my_generic_function::<u32>");
-/// assert_eq!(
-///     pretty_name::of_function!(my_generic_function_2args::<..>).to_string(),
-///     "my_generic_function_2args");
 /// assert_eq!(
 ///     pretty_name::of_function!(my_generic_function_2args::<u32, String>).to_string(),
 ///     "my_generic_function_2args::<u32, String>");
 /// ```
+///
+/// A generic function cannot omit its type arguments:
+///
+/// ```compile_fail
+/// fn generic<T>() {}
+/// let _ = pretty_name::of_function!(generic);
+/// ```
+///
+/// The legacy placeholder is rejected:
+///
+/// ```compile_fail
+/// fn generic<T>() {}
+/// let _ = pretty_name::of_function!(generic::<..>);
+/// ```
+///
+/// Inferred type arguments are rejected:
+///
+/// ```compile_fail
+/// fn generic<T>() {}
+/// let _ = pretty_name::of_function!(generic::<_>);
+/// ```
+///
+/// Direct const generic arguments are rejected:
+///
+/// ```compile_fail
+/// fn const_generic<const N: usize>() {}
+/// let _ = pretty_name::of_function!(const_generic::<16>);
+/// ```
+///
+/// Missing functions are rejected:
+///
+/// ```compile_fail
+/// let _ = pretty_name::of_function!(missing_function);
+/// ```
 #[macro_export]
 macro_rules! of_function {
-    // IMPLEMENTATION NOTE:
-    //   - The $ident arm magically handles auto-completion for the other arms,
-    //     especially for the $ident::<..> arm.
-    //   - The $ident::<..> arm adopts an unusual approach for identifier validation
-    //     by using `use $ident;`. This works because functions can be imported, but
-    //     lacks auto-completion support in VSCode and other editors. This means that
-    //     currently we cannot use this approach for the general case.
     ($ident:ident) => {{
         let _ = &$ident;
         $crate::__function_name(
             stringify!($ident),
             ::std::boxed::Box::new([]))
     }};
-    ($ident:ident ::<..>) => {{
-        #[allow(unused)] use $ident;
-        $crate::__function_name(
-            stringify!($ident),
-            ::std::boxed::Box::new([]))
-    }};
-    ($ident:ident ::<$($arg:ty),*>) => {{
+    ($ident:ident ::<$($arg:ty),+ $(,)?>) => {{
         let _ = &$ident::<$($arg),*>;
         $crate::__function_name(
             stringify!($ident),
@@ -180,6 +204,13 @@ macro_rules! of_type {
 ///     pretty_name::of_field!(<MyGenericStruct<u32>>::my_field).to_string(),
 ///     "<MyGenericStruct<u32>>::my_field");
 /// ```
+///
+/// Missing fields are rejected at compile time:
+///
+/// ```compile_fail
+/// struct MyStruct;
+/// let _ = pretty_name::of_field!(MyStruct::missing_field);
+/// ```
 #[macro_export]
 macro_rules! of_field {
     (Self:: $field:ident) => {{
@@ -209,12 +240,13 @@ macro_rules! of_field {
 ///
 /// This macro resolves `Self` to the appropriate type when used inside an `impl` block.
 ///
-/// By default, this macro expects a simple type identifier like `Type::field`. To use
+/// By default, this macro expects a simple type identifier like `Type::method`. To use
 /// types with qualified path or generic parameters, wrap the type in angle brackets
-/// like `<Type<T>>::field` or `<module::Type>::field`.
+/// like `<Type<T>>::method` or `<module::Type>::method`.
 ///
-/// Due to implementation limitations, you cannot use the `::<..>` placeholder to exclude
-/// generic parameters. Use explicit type arguments instead.
+/// A generic method must specify every caller-provided generic argument, and every
+/// argument must be a concrete type. Inferred arguments, direct const arguments, and
+/// the legacy `::<..>` placeholder are intentionally unsupported.
 ///
 /// # Examples
 /// ```rust
@@ -242,6 +274,45 @@ macro_rules! of_field {
 ///         <MyGenericStruct<u32>>::my_generic_method::<String>).to_string(),
 ///     "<MyGenericStruct<u32>>::my_generic_method::<String>");
 /// ```
+///
+/// A generic method cannot omit its type arguments:
+///
+/// ```compile_fail
+/// struct Owner;
+/// impl Owner { fn generic<T>(&self) {} }
+/// let _ = pretty_name::of_method!(Owner::generic);
+/// ```
+///
+/// The legacy placeholder is rejected:
+///
+/// ```compile_fail
+/// struct Owner;
+/// impl Owner { fn generic<T>(&self) {} }
+/// let _ = pretty_name::of_method!(Owner::generic::<..>);
+/// ```
+///
+/// Inferred type arguments are rejected:
+///
+/// ```compile_fail
+/// struct Owner;
+/// impl Owner { fn generic<T>(&self) {} }
+/// let _ = pretty_name::of_method!(Owner::generic::<_>);
+/// ```
+///
+/// Direct const generic arguments are rejected:
+///
+/// ```compile_fail
+/// struct Owner;
+/// impl Owner { fn generic<const N: usize>(&self) {} }
+/// let _ = pretty_name::of_method!(Owner::generic::<16>);
+/// ```
+///
+/// Missing methods are rejected:
+///
+/// ```compile_fail
+/// struct Owner;
+/// let _ = pretty_name::of_method!(Owner::missing_method);
+/// ```
 #[macro_export]
 macro_rules! of_method {
     (Self:: $method:ident) => {{
@@ -258,7 +329,7 @@ macro_rules! of_method {
             stringify!($method),
             ::std::boxed::Box::new([]))
     }};
-    ($ty:ident :: $method:ident ::<$($arg:ty),*>) => {{
+    ($ty:ident :: $method:ident ::<$($arg:ty),+ $(,)?>) => {{
         let _ = &$ty::$method::<$($arg),*>;
         $crate::__member_name(
             $crate::type_name::<$ty>(),
@@ -273,7 +344,7 @@ macro_rules! of_method {
             stringify!($method),
             ::std::boxed::Box::new([]))
     }};
-    (<$ty:ty> :: $method:ident ::<$($arg:ty),*>) => {{
+    (<$ty:ty> :: $method:ident ::<$($arg:ty),+ $(,)?>) => {{
         let _ = &<$ty>::$method::<$($arg),*>;
         $crate::__member_name(
             $crate::type_name::<$ty>(),
@@ -286,8 +357,8 @@ macro_rules! of_method {
 ///
 /// This macro resolves `Self` to the appropriate type when used inside an `impl` block.
 ///
-/// This macros supports both unit variants, tuple variants and struct variants. See
-/// examples for syntax for each variant type.
+/// This macro supports unit, tuple, and struct variants. See the examples for each
+/// variant shape's syntax.
 ///
 /// To use a qualified or generic owner type, wrap the type in angle brackets like
 /// `<module::MyEnum>::Variant` or `<MyEnum<T>>::Variant`. These forms work on stable Rust.
@@ -315,6 +386,20 @@ macro_rules! of_method {
 /// assert_eq!(
 ///     pretty_name::of_variant!(<MyGenericEnum<u32>>::UnitVariant).to_string(),
 ///     "<MyGenericEnum<u32>>::UnitVariant");
+/// ```
+///
+/// The requested variant shape is checked at compile time:
+///
+/// ```compile_fail
+/// enum MyEnum { Tuple(u32) }
+/// let _ = pretty_name::of_variant!(MyEnum::Tuple);
+/// ```
+///
+/// Missing variants are rejected:
+///
+/// ```compile_fail
+/// enum MyEnum { Unit }
+/// let _ = pretty_name::of_variant!(MyEnum::Missing);
 /// ```
 #[macro_export]
 macro_rules! of_variant {
