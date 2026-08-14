@@ -6,6 +6,17 @@ use crate::TypeName;
 ///
 /// Formatting writes the identifier exactly as it appeared at the macro call after
 /// ordinary Rust syntax confirmed that it resolves.
+///
+/// # Examples
+///
+/// ```rust
+/// let local_value = 42;
+/// let name: pretty_name::IdentifierName = pretty_name::of_var!(local_value);
+///
+/// assert_eq!(format!("{name}"), "local_value");
+/// assert_eq!(name.to_string(), "local_value");
+/// assert!(format!("{name:?}").starts_with("IdentifierName("));
+/// ```
 #[derive(Debug)]
 pub struct IdentifierName(&'static str);
 
@@ -16,6 +27,17 @@ impl fmt::Display for IdentifierName {
 }
 
 /// A validated function identifier with compiler-resolved generic type arguments.
+///
+/// # Examples
+///
+/// ```rust
+/// fn generic<T>() {}
+///
+/// let name: pretty_name::FunctionName = pretty_name::of_function!(generic::<u32>);
+/// assert_eq!(format!("{name}"), "generic::<u32>");
+/// assert_eq!(name.to_string(), "generic::<u32>");
+/// assert!(format!("{name:?}").starts_with("FunctionName {"));
+/// ```
 #[derive(Debug)]
 pub struct FunctionName {
     /// The identifier written at the macro call.
@@ -32,6 +54,19 @@ impl fmt::Display for FunctionName {
 }
 
 /// A validated field, method, or variant identifier with its compiler-resolved owner.
+///
+/// # Examples
+///
+/// ```rust
+/// struct Owner {
+///     field: u32,
+/// }
+///
+/// let name: pretty_name::MemberName = pretty_name::of_field!(Owner::field);
+/// assert_eq!(format!("{name}"), "<Owner>::field");
+/// assert_eq!(name.to_string(), "<Owner>::field");
+/// assert!(format!("{name:?}").starts_with("MemberName {"));
+/// ```
 #[derive(Debug)]
 pub struct MemberName {
     /// The compiler-resolved owner type.

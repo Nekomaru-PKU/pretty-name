@@ -315,8 +315,9 @@ macro_rules! of_method {
 ///
 /// This macro resolves `Self` to the appropriate type when used inside an `impl` block.
 ///
-/// This macro supports unit, tuple, and struct variants. See the examples for each
-/// variant shape's syntax.
+/// This macro supports unit, tuple, and struct variants. The struct form names one
+/// field so Rust can distinguish it from unit and tuple variants; a bare `{ .. }`
+/// pattern is valid for every variant shape and therefore cannot provide that check.
 ///
 /// To use a qualified or generic owner type, wrap the type in angle brackets like
 /// `<module::MyEnum>::Variant` or `<MyEnum<T>>::Variant`. These forms work on stable Rust.
@@ -339,7 +340,7 @@ macro_rules! of_method {
 ///     pretty_name::of_variant!(MyEnum::TupleVariant(..)).to_string(),
 ///     "<MyEnum>::TupleVariant");
 /// assert_eq!(
-///     pretty_name::of_variant!(MyEnum::StructVariant {..}).to_string(),
+///     pretty_name::of_variant!(MyEnum::StructVariant { field, .. }).to_string(),
 ///     "<MyEnum>::StructVariant");
 /// assert_eq!(
 ///     pretty_name::of_variant!(<MyGenericEnum<u32>>::UnitVariant).to_string(),
@@ -375,8 +376,11 @@ macro_rules! of_variant {
             stringify!($variant),
             ::std::boxed::Box::new([]))
     }};
-    (Self:: $variant:ident {..}) => {{
-        let _ = |obj: Self| match obj { Self::$variant { .. } => {}, _ => {} };
+    (Self:: $variant:ident { $field:ident, .. }) => {{
+        let _ = |obj: Self| match obj {
+            Self::$variant { $field: _, .. } => {},
+            _ => {},
+        };
         $crate::__member_name(
             $crate::type_name::<Self>(),
             stringify!($variant),
@@ -397,8 +401,11 @@ macro_rules! of_variant {
             stringify!($variant),
             ::std::boxed::Box::new([]))
     }};
-    ($ty:ident :: $variant:ident {..}) => {{
-        let _ = |obj: $ty| match obj { $ty::$variant { .. } => {}, _ => {} };
+    ($ty:ident :: $variant:ident { $field:ident, .. }) => {{
+        let _ = |obj: $ty| match obj {
+            $ty::$variant { $field: _, .. } => {},
+            _ => {},
+        };
         $crate::__member_name(
             $crate::type_name::<$ty>(),
             stringify!($variant),
@@ -413,14 +420,22 @@ macro_rules! of_variant {
             ::std::boxed::Box::new([]))
     }};
     (<$ty:ty> :: $variant:ident (..)) => {{
-        let _ = |obj: $ty| match obj { <$ty>::$variant(..) => {}, _ => {} };
+        // A local alias keeps qualified generic paths out of pattern position, where
+        // Rust still requires the `more_qualified_paths` language feature.
+        type PrettyNameOwner = $ty;
+        let _ = |obj: $ty| match obj { PrettyNameOwner::$variant(..) => {}, _ => {} };
         $crate::__member_name(
             $crate::type_name::<$ty>(),
             stringify!($variant),
             ::std::boxed::Box::new([]))
     }};
-    (<$ty:ty> :: $variant:ident {..}) => {{
-        let _ = |obj: $ty| match obj { <$ty>::$variant { .. } => {}, _ => {} };
+    (<$ty:ty> :: $variant:ident { $field:ident, .. }) => {{
+        // See the tuple-variant arm for why validation uses a block-local alias.
+        type PrettyNameOwner = $ty;
+        let _ = |obj: $ty| match obj {
+            PrettyNameOwner::$variant { $field: _, .. } => {},
+            _ => {},
+        };
         $crate::__member_name(
             $crate::type_name::<$ty>(),
             stringify!($variant),

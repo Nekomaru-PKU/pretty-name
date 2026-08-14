@@ -1,0 +1,49 @@
+/// A generic owner used to validate `Self` and generic owner resolution.
+struct Owner<T> {
+    /// A field referenced through `Self`.
+    field: T,
+}
+
+impl<T> Owner<T> {
+    /// A method referenced through `Self`.
+    fn method(&self) {}
+
+    /// A generic method referenced through `Self` with an explicit argument.
+    fn generic<U>(&self) {}
+
+    /// Exercises the supported `Self` macro forms inside a generic implementation.
+    fn names() {
+        let _ = pretty_name::of_type!(Self);
+        let _ = pretty_name::of_field!(Self::field);
+        let _ = pretty_name::of_method!(Self::method);
+        let _ = pretty_name::of_method!(Self::generic::<u32>);
+    }
+}
+
+/// A generic enum used to validate every `Self` variant shape.
+enum Choice<T> {
+    /// A unit variant referenced through `Self`.
+    Unit,
+    /// A tuple variant referenced through `Self`.
+    Tuple(T),
+    /// A struct variant referenced through `Self`.
+    Struct {
+        /// A payload that makes the struct variant non-empty.
+        value: T,
+    },
+}
+
+impl<T> Choice<T> {
+    /// Exercises every supported variant shape through `Self`.
+    fn names() {
+        let _ = pretty_name::of_variant!(Self::Unit);
+        let _ = pretty_name::of_variant!(Self::Tuple(..));
+        let _ = pretty_name::of_variant!(Self::Struct { value, .. });
+    }
+}
+
+/// Instantiates the generic fixtures so their `Self` forms are type-checked.
+fn main() {
+    Owner::<u32>::names();
+    Choice::<u32>::names();
+}

@@ -167,6 +167,10 @@ No arm may accept an input by stringifying it without the corresponding compiler
 Misspelled items, invalid owners, missing generic arguments, and wrong field or variant
 shapes must fail during compilation.
 
+The struct-variant form is `T::Variant { field, .. }` and requires one real field name.
+Rust accepts a bare `T::Variant { .. }` pattern for unit and tuple variants as well, so
+that shorter spelling cannot enforce the shape guarantee and is intentionally rejected.
+
 ## Generic function and method boundary
 
 A function or method generic argument list is supported only when every required,

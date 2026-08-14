@@ -113,7 +113,7 @@ mod fixtures {
 
         /// Gets the struct variant name through `Self`.
         pub fn self_struct_name() -> pretty_name::MemberName {
-            pretty_name::of_variant!(Self::Struct {..})
+            pretty_name::of_variant!(Self::Struct { value, .. })
         }
     }
 }
@@ -360,7 +360,7 @@ fn variant_macro_supports_every_simple_variant_shape() {
         (
             unit_name.to_string(),
             pretty_name::of_variant!(SimpleEnum::Tuple(..)).to_string(),
-            pretty_name::of_variant!(SimpleEnum::Struct {..}).to_string(),
+            pretty_name::of_variant!(SimpleEnum::Struct { value, .. }).to_string(),
             tuple_value,
             struct_value),
         (
@@ -396,7 +396,7 @@ fn variant_macro_supports_stable_generic_variant_forms() {
         (
             unit_name.to_string(),
             pretty_name::of_variant!(GenericU32::Tuple(..)).to_string(),
-            pretty_name::of_variant!(GenericU32::Struct {..}).to_string(),
+            pretty_name::of_variant!(GenericU32::Struct { value, .. }).to_string(),
             tuple_value,
             struct_value),
         (

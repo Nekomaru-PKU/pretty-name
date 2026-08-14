@@ -72,13 +72,15 @@ Naming operations yield opaque values that can be formatted with `{}` or convert
 | **Enum variants** | | |
 | Unit variant | `pretty_name::of_variant!(Type::Variant)` | `pretty_name::of_variant!(MyEnum::UnitVariant).to_string()` → `"<MyEnum>::UnitVariant"` |
 | Tuple variant | `pretty_name::of_variant!(Type::Variant(..))` | `pretty_name::of_variant!(MyEnum::TupleVariant(..)).to_string()` → `"<MyEnum>::TupleVariant"` |
-| Struct variant | `pretty_name::of_variant!(Type::Variant{..})` | `pretty_name::of_variant!(MyEnum::StructVariant{..}).to_string()` → `"<MyEnum>::StructVariant"` |
+| Struct variant | `pretty_name::of_variant!(Type::Variant { field, .. })` | `pretty_name::of_variant!(MyEnum::StructVariant { field, .. }).to_string()` → `"<MyEnum>::StructVariant"` |
 | Variant (on generic type) | `pretty_name::of_variant!(<Type<T>>::Variant)` | `pretty_name::of_variant!(<MyEnum<u32>>::Variant).to_string()` → `"<MyEnum<u32>>::Variant"` |
 | Variant (on qualified type) | `pretty_name::of_variant!(<module::Type>::Variant)` | `pretty_name::of_variant!(<my_module::MyEnum>::Variant).to_string()` → `"<MyEnum>::Variant"` |
 
 **Notes:**
 - Macros resolve `Self` to the appropriate type when used inside `impl` blocks.
 - Use `<Type>` syntax for types with qualified paths or generic parameters.
+- The struct-variant form names one field because Rust also accepts a bare `{ .. }`
+  pattern for unit and tuple variants; the field makes shape validation unambiguous.
 - Generic functions and methods require every caller-provided generic argument to be
   written explicitly as a concrete type. Inferred arguments, direct const arguments,
   omitted arguments, and the legacy `::<..>` placeholder are unsupported.

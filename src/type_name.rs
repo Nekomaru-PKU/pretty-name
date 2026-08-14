@@ -18,6 +18,8 @@ use syn::*;
 ///
 /// let name = type_name::<std::collections::HashMap<String, i32>>();
 /// assert_eq!(name.to_string(), "HashMap<String, i32>");
+/// assert_eq!(format!("{name}"), "HashMap<String, i32>");
+/// assert!(format!("{name:?}").starts_with("TypeName("));
 /// ```
 #[derive(Debug)]
 pub struct TypeName(&'static str);
@@ -115,7 +117,7 @@ struct TypeQualificationShortener {
 
 impl VisitMut for TypeQualificationShortener {
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
-        if matches!(expr, Expr::Verbatim(_)) {
+        if matches!(expr, Expr::Macro(_) | Expr::Verbatim(_)) {
             self.encountered_unparsed_syntax = true;
             return;
         }
@@ -131,7 +133,7 @@ impl VisitMut for TypeQualificationShortener {
     }
 
     fn visit_type_mut(&mut self, ty: &mut Type) {
-        if matches!(ty, Type::Verbatim(_)) {
+        if matches!(ty, Type::Macro(_) | Type::Verbatim(_)) {
             self.encountered_unparsed_syntax = true;
             return;
         }
@@ -203,7 +205,39 @@ fn retain_final_path_segment(path: &mut Path) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt;
+    use std::fmt::Write as _;
+
     use super::TypeName;
+
+    /// A destination that proves `Display` forwards formatter failures to its caller.
+    struct RefusingWriter;
+
+    impl fmt::Write for RefusingWriter {
+        fn write_str(&mut self, _value: &str) -> fmt::Result { Err(fmt::Error) }
+    }
+
+    /// Verifies a plain qualified path loses only its module qualification.
+    #[test]
+    fn display_shortens_a_plain_qualified_path() {
+        assert_eq!(TypeName("crate::model::Record").to_string(), "Record");
+    }
+
+    /// Verifies nested generic arguments are transformed recursively.
+    #[test]
+    fn display_shortens_nested_qualified_paths() {
+        assert_eq!(
+            TypeName(
+                "std::collections::HashMap<std::string::String, crate::model::Record>")
+            .to_string(),
+            "HashMap<String, Record>");
+    }
+
+    /// Verifies leading global qualification is removed with module qualification.
+    #[test]
+    fn display_removes_a_leading_global_qualifier() {
+        assert_eq!(TypeName("::crate_name::Record").to_string(), "Record");
+    }
 
     /// Verifies compiler-emitted lifetimes survive qualification removal.
     #[test]
@@ -236,5 +270,47 @@ mod tests {
         let description = "crate::module::{closure@src/lib.rs:1:1}";
 
         assert_eq!(TypeName(description).to_string(), description);
+    }
+
+    /// Verifies empty unknown input is preserved rather than panicking or inventing a
+    /// name.
+    #[test]
+    fn display_preserves_an_empty_description() {
+        assert_eq!(TypeName("").to_string(), "");
+    }
+
+    /// Verifies malformed generic input is preserved byte-for-byte.
+    #[test]
+    fn display_preserves_an_unclosed_generic_description() {
+        let description = "crate::module::Wrapper<crate::model::Record";
+
+        assert_eq!(TypeName(description).to_string(), description);
+    }
+
+    /// Verifies macro type tokens trigger whole-description fallback because Syn does
+    /// not expose their internal type grammar to the visitor.
+    #[test]
+    fn display_preserves_macro_types_without_partial_shortening() {
+        let description = "crate::types::Wrapper<crate::type_macro!(crate::model::Record)>";
+
+        assert_eq!(TypeName(description).to_string(), description);
+    }
+
+    /// Verifies macro const expressions trigger whole-description fallback for the
+    /// same opaque-token reason as macro types.
+    #[test]
+    fn display_preserves_macro_const_arguments_without_partial_shortening() {
+        let description = "crate::types::Buffer<{ crate::length!() }>";
+
+        assert_eq!(TypeName(description).to_string(), description);
+    }
+
+    /// Verifies destination failures remain ordinary formatting errors after parsing
+    /// and shortening complete.
+    #[test]
+    fn display_propagates_destination_errors() {
+        let mut writer = RefusingWriter;
+
+        assert!(write!(&mut writer, "{}", TypeName("crate::model::Record")).is_err());
     }
 }

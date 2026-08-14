@@ -13,3 +13,11 @@ description = "Get the human-friendly name of types, functions, methods, fields,
 quote = "1.0"
 prettyplease = "0.3.0"
 syn = { version = "3.0.3", features = ["full", "visit-mut"] }
+
+[dev-dependencies]
+trybuild = "1.0.120"
+windows = { version = "0.62.2", features = [
+    "ApplicationModel_Activation",
+    "ApplicationModel_Core",
+    "Foundation",
+] }
