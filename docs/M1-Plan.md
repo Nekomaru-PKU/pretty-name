@@ -1,671 +1,375 @@
-# M1 Plan: Lazy Semantic Names
+# M1 Plan: Verified Diagnostic Names
 
-Status: Draft for intention-by-intention discussion  
-Target: Next major version  
-Scope: Public naming semantics, lazy formatting values, macro composition, crate simplification, and release validation
+Status: Design accepted; implementation not started  
+Target: `1.0`  
+Scope: A correctness-first redesign of type, identifier, function, member, and variant names
 
 ## Milestone outcome
 
-M1 pivots `pretty-name` toward lazy, allocation-free diagnostic names for Rust
-language constructs:
+M1 establishes `pretty-name` as a crate for readable diagnostic names that combine two sources of information:
 
-- Type components come from the compiler-resolved description returned by
-  `core::any::type_name`.
-- Non-type identifiers are captured with `stringify!` after normal Rust code
-  validates that the referenced item exists.
-- Names are represented as borrowed values that implement `core::fmt::Display`.
-- Formatting does not require a global cache, synchronization, or leaked
-  allocations.
-- Unsupported compiler descriptions remain informative and never become a
-  runtime panic.
+- **Resolved types** come from the compiler description returned by `core::any::type_name`.
+- **Source identifiers** come from the identifier written at the macro call after ordinary Rust code verifies that the referenced item exists and has the expected shape.
 
-The milestone is divided into refactor intentions rather than a sequential task
-list. Each intention owns a bounded set of decisions so it can be discussed and
-revised separately. Implementation may proceed concurrently after the relevant
-integration contracts are accepted.
+The public result is an opaque value that implements `Display`. Formatting a name with `{}` produces the shortened human-readable representation, while the standard `ToString` blanket implementation provides an explicitly owned `String` when needed.
 
-## Working semantic baseline
+M1 prioritizes, in order:
 
-The following decisions are the starting point for the six intentions. An
-intention may refine a decision it owns, but cross-intention changes must update
-the affected contracts explicitly.
+1. Correct names and uncompromised compiler validation.
+2. Robust handling of Rust syntax and unfamiliar compiler descriptions.
+3. A small, predictable public API.
+4. Performance measured after the behavior and feature set are correct.
 
-1. A type alias is transparent to semantic type naming:
-   `of_type!(Alias)` describes the aliased type rather than returning `"Alias"`.
-2. Variables, functions, fields, methods, and variants have lexical identifiers
-   because stable Rust does not expose their declared identifiers through
-   semantic reflection.
-3. Compound names intentionally combine both sources:
-   `of_method!(Owner::method::<Arg>)` has semantic `Owner` and `Arg` components,
-   but a lexical `method` component.
-4. `core::any::type_name` is diagnostic input, not a persistent identifier or a
-   stable serialization key.
-5. The primary output contract is `Display`; allocation through `ToString` is an
-   explicit caller choice.
-6. Constant evaluation is not a milestone-wide guarantee. Lexical-only values
-   may remain const-constructible when that falls out naturally from their
-   representation.
+M1 does not promise zero allocation, lock-free operation, `no_std`, a dependency-free implementation, minimum binary size, or compatibility with earlier releases. Any public claim must be backed by the completed implementation and its tests.
 
-## Parallel intention map
+## Semantic contract
 
-| Intention | Owns | May begin after | Primary integration output |
-|---|---|---|---|
-| [M1-I1](#m1-i1-semantic-contract-and-vocabulary) | Meaning and vocabulary | Immediately | Semantic contract |
-| [M1-I2](#m1-i2-lazy-type-name-formatter) | Borrowed type formatting | I1 working baseline | `TypeName` behavior |
-| [M1-I3](#m1-i3-composable-name-values-and-macros) | Macro validation and compound values | I1 working baseline | Macro/value contract |
-| [M1-I4](#m1-i4-runtime-and-crate-simplification) | Cache, dependency, and platform removal | I2 and I3 prototypes | Simplified crate profile |
-| [M1-I5](#m1-i5-formatting-policy) | Qualification and presentation options | I1 working baseline | Formatting policy contract |
-| [M1-I6](#m1-i6-verification-migration-and-positioning) | Tests, benchmarks, migration, and release story | Immediately | Release gates |
+### Resolved types
 
-```mermaid
-flowchart LR
-    I1["I1: Semantic contract"]
-    I2["I2: Lazy type formatter"]
-    I3["I3: Name values and macros"]
-    I4["I4: Crate simplification"]
-    I5["I5: Formatting policy"]
-    I6["I6: Verification and migration"]
-    G1["Integration gate: stable value contract"]
-    G2["Release gate: verified major version"]
+Every type-bearing component is obtained through the compiler rather than from the spelling passed to a macro. This rule applies uniformly to:
 
-    I1 --> I2
-    I1 --> I3
-    I1 --> I5
-    I5 --> I2
-    I2 --> G1
-    I3 --> G1
-    G1 --> I4
-    I2 --> I6
-    I3 --> I6
-    I4 --> I6
-    I5 --> I6
-    I6 --> G2
-```
+- Direct type names.
+- Owner types of fields, methods, and variants.
+- Type arguments of functions and methods.
+- Type aliases and renamed imports.
+- Generic type parameters and `Self` after monomorphization.
+- Const arguments nested inside a resolved type, such as `[u8; 16]` or `Array<u8, 16>`.
 
-The arrows describe integration dependencies, not a requirement to discuss or
-prototype the intentions serially. In particular, I2 and I3 should agree on a
-minimal boundary and then proceed independently; I6 can build its corpus and
-migration inventory while production design is ongoing.
+A type alias is therefore transparent. If `Alias` names `crate::model::Record`, `of_type!(Alias)` describes the resolved `Record` type rather than preserving the token `Alias`.
 
-## M1-I1: Semantic contract and vocabulary
+`core::any::type_name` is diagnostic input, not reflection, stable identity, or a serialization key. Its output may be incomplete or may change with a compiler release. Such a change is not a `pretty-name` defect unless the crate corrupts, loses, or misrepresents the received description.
 
-### Goal
+### Source identifiers
 
-Define one concise rule that predicts where every displayed component comes
-from, independent of macro syntax shape.
+Rust does not provide stable reflection for the declared names of variables, functions, fields, methods, or variants. These components are captured with `stringify!` only after a real Rust expression, item reference, field access, or pattern validates the identifier.
 
-### Owned decisions
+A renamed function import therefore displays the identifier written at the macro call. This is intentional: the function component is a source identifier, while its generic arguments remain resolved types.
 
-- The distinction between a semantic type component and a lexical identifier
-  component.
-- Behavior for aliases, generic parameters, `Self`, imports, and re-exports.
-- Whether function names remain lexical when their generic arguments are
-  semantic.
-- Terminology used throughout the API and documentation, especially avoiding
-  language that implies runtime reflection.
-- The guarantee level of compiler-generated type descriptions.
+### Composition matrix
 
-### Proposed contract
-
-> Every type-bearing component is derived from the compiler's semantic type
-> description. Every non-type identifier is captured lexically after compile-time
-> validation.
-
-Examples:
-
-| Expression | Semantic components | Lexical components |
+| Operation | Resolved type components | Source identifier components |
 |---|---|---|
 | `of_type!(T)` | `T` | None |
+| `of_var!(value)` | None | `value` |
+| `of_function!(function::<A>)` | `A` | `function` |
 | `of_field!(T::field)` | `T` | `field` |
 | `of_method!(T::method::<A>)` | `T`, `A` | `method` |
 | `of_variant!(T::Variant)` | `T` | `Variant` |
-| `of_function!(function::<A>)` | `A` | `function` |
-| `of_var!(variable)` | None | `variable` |
 
-### Edge cases to settle
+There are no lexical or source-spelled type exceptions in M1.
 
-- A type alias and a renamed type import should resolve to the underlying type
-  description.
-- A renamed function import should retain the identifier written at the macro
-  call because the function component is lexical.
-- A generic type parameter should display its concrete monomorphized type.
-- `Self` should display the concrete implementing type.
-- Two distinct types may shorten to the same output; this is a presentation
-  collision rather than an identity collision.
-- Compiler output may change between compiler releases without constituting a
-  crate bug unless `pretty-name` corrupts or loses information unexpectedly.
+## Public value contract
 
-### Non-goals
-
-- Stable type identity, serialization keys, or protocol identifiers.
-- Discovering declaration identifiers through compiler-private reflection.
-- Making source spelling and semantic identity interchangeable.
-
-### Acceptance criteria
-
-- Every public function and macro can be classified using the contract without
-  adding syntax-specific exceptions.
-- Alias, generic-parameter, `Self`, import, and re-export examples are documented.
-- The documentation distinguishes compiler resolution from runtime formatting.
-- I2, I3, and I5 can reference this contract without redefining it.
-
-### Open discussion questions
-
-- Should the public vocabulary use `semantic` and `lexical`, or friendlier terms
-  such as `resolved type` and `source identifier`?
-- Should a fully lexical type-name operation remain in this crate under an
-  explicitly source-oriented name, or be left to `nameof`?
-- Should declaration-side or enclosing-function naming be part of a later
-  milestone?
-
-## M1-I2: Lazy type-name formatter
-
-### Goal
-
-Replace eager parsing, formatting, caching, and leaked strings with a borrowed
-adapter that writes a shortened type description directly into a formatter.
-
-### Owned decisions
-
-- The public `TypeName` representation and constructors.
-- The streaming transformation from an original type description to displayed
-  output.
-- `Display`, `Debug`, equality, and original-string access behavior.
-- Behavior for unfamiliar or malformed diagnostic descriptions.
-- Whether formatting options live directly in `TypeName` or in a separate
-  adapter.
-
-### Candidate public shape
-
-The exact names are intentionally unresolved, but the value should support this
-style of use:
+M1 uses a small set of category-specific, opaque value types. Their intended private representation is:
 
 ```rust
-let name = pretty_name::type_name::<Vec<crate::model::User>>();
+pub struct TypeName(&'static str);
 
-tracing::debug!(ty = %name);
-assert_eq!(name.to_string(), "Vec<User>");
-assert_eq!(name.original(), core::any::type_name::<Vec<crate::model::User>>());
+pub struct IdentifierName(&'static str);
+
+pub struct FunctionName {
+    ident: &'static str,
+    args: Box<[TypeName]>,
+}
+
+pub struct MemberName {
+    owner: TypeName,
+    ident: &'static str,
+    args: Box<[TypeName]>,
+}
 ```
 
-The value should borrow the original description, be inexpensive to construct,
-and avoid owning a parsed syntax tree. `ToString` may allocate through the
-standard `Display` blanket implementation when allocation is available.
+`MemberName` represents fields, methods, and variants. Empty `args` distinguish non-generic members naturally without adding more public types. Public entry points construct these values; callers cannot construct arbitrary names.
 
-### Formatter requirements
+The public surface is deliberately narrow:
 
-- Preserve references, mutability, raw-pointer qualifiers, function signatures,
-  tuple arity, arrays, slices, trait bounds, associated-type bindings, and const
-  arguments.
-- Remove module qualification according to I5 without deleting surrounding
-  punctuation or qualifiers.
-- Handle paths after `>`, `)`, and `]` without damaging associated item syntax.
-- Treat closure, async-block, and other compiler-generated descriptions as
-  best-effort diagnostic text.
-- Operate on valid UTF-8 boundaries and preserve raw identifiers.
-- Propagate only errors reported by the destination `fmt::Write` implementation.
+- Every name type implements `Display`.
+- Every name type derives `Debug` conventionally.
+- Compound values own their generic argument list as `Box<[TypeName]>` on every compiler channel.
+- Compound values do not implement `Copy`.
+- No crate-specific common trait is introduced in M1.
+- No `display()`, `raw()`, `original()`, `inner()`, component accessor, `From<&str>`, string comparison, or similar inspection API is provided.
+- `.to_string()` is the standard fluent conversion for callers that need `String`.
 
-### Failure policy
+Derived `Debug` is structural developer diagnostics, not a second name format. For example, it may expose `TypeName("crate::model::Record")` or private field labels such as `ident` and `args`. Its exact text is not a stable identity or serialization contract.
 
-Formatting must not panic because a compiler description uses an unfamiliar
-shape. When a transformation cannot be applied confidently, the formatter must
-preserve the affected input rather than return an opaque error marker or silently
-drop it.
+### Display grammar
 
-### Performance contract
+`Display` uses one fixed M1 presentation policy:
 
-- Construction performs no allocation and acquires no lock.
-- `Display` performs one bounded-memory pass over the source description.
-- Formatting writes directly to the destination without an intermediate
-  `String`.
-- Repeated formatting may repeat the scan; callers that need amortization can
-  retain an explicitly allocated string.
-- Performance claims require release-mode benchmarks from I6.
+- A type name omits module qualification from parseable type paths.
+- Every other parsed type component is preserved, including references, lifetimes emitted by the compiler, mutability, raw-pointer qualifiers, tuple arity, arrays, slices, function signatures, trait bounds, associated-type bindings, and const arguments.
+- A function is written as `ident` or `ident::<Args...>`.
+- Every field, method, and variant uses the uniform qualified-owner form `<Owner>::ident` or `<Owner>::ident::<Args...>`.
+- Arguments are separated by `, ` with no trailing comma.
 
-### Non-goals
-
-- Parsing arbitrary Rust source into a complete syntax tree.
-- Guaranteeing that the compiler description is valid Rust syntax.
-- Interning or globally caching formatted strings.
-- Reproducing every whitespace choice made by `rustfmt` or `prettyplease`.
-
-### Acceptance criteria
-
-- The complete type corpus in I6 formats without panic or information loss.
-- Direct formatting performs no heap allocation.
-- `TypeName` exposes the original compiler description.
-- Unsupported descriptions have documented, deterministic fallback behavior.
-- The formatter can be used with `core::fmt` in a `no_std` build.
-
-### Open discussion questions
-
-- Should `Debug` delegate to `Display`, or reveal the adapter and its original
-  input conventionally?
-- Should equality against `str` format lazily, or should callers compare an
-  explicitly owned result?
-- Should the adapter accept arbitrary borrowed strings through `From<&str>`?
-- How small must the value remain before deriving `Copy` is justified?
-
-## M1-I3: Composable name values and macros
-
-### Goal
-
-Make every macro construct a lazy display value from validated lexical parts and
-semantic type parts, without allocating a final string.
-
-### Owned decisions
-
-- Public value types for identifiers, members, functions, and generic arguments.
-- Macro return types and their common formatting behavior.
-- Compile-time validation expressions.
-- Composition punctuation and canonical display grammar.
-- IDE completion behavior and qualified-path input syntax.
-
-### Design principle
-
-Validation and name production remain separate:
+For example:
 
 ```text
-real Rust expression or type use
-    -> compiler validates the referenced construct
-
-stringify!(identifier) and TypeName::of::<T>()
-    -> produce lexical and semantic display components
+alloc::vec::Vec<crate::model::Record>  ->  Vec<Record>
+function::<crate::model::Record>       ->  function::<Record>
+<crate::model::Owner>::field           ->  <Owner>::field
 ```
 
-This separation prevents `stringify!` from accepting misspelled identifiers and
-prevents display implementation details from weakening compiler validation.
+Short names are diagnostic presentation, not unique identities. Two different resolved types may shorten to the same output. Qualification controls and other formatting customization are postponed until after `1.0`.
 
-### Candidate value model
+## Type-description parsing contract
 
-The intention should compare small category-specific values against one universal
-name representation. A likely shape is:
+Correctness depends on recognizing Rust type structure accurately. M1 therefore uses `syn` or an equivalently rigorous Rust grammar implementation for type descriptions that can be parsed as Rust syntax.
 
-- An identifier value containing one `&'static str`.
-- A member value containing a semantic owner, a lexical member identifier, and
-  zero or more semantic type arguments.
-- A function value containing a lexical function identifier and zero or more
-  semantic type arguments.
-- A type macro returning the same `TypeName` value as the function API.
+The following approaches are explicitly prohibited, including as future performance optimizations:
 
-Const-generic arrays are a candidate for heterogeneous generic argument lists
-because every argument can be erased to the same borrowed `TypeName` value. The
-design must measure value size and monomorphization impact before adopting that
-representation.
+- Delimiter-depth scanning presented as parsing.
+- Searching for the last `::` or similar path heuristics.
+- Ad-hoc token deletion based on surrounding punctuation.
+- A separate fast path whose behavior is weaker than the grammar-aware path.
 
-### Macro behavior matrix
+If a compiler description cannot be parsed confidently, `Display` writes that description unchanged. It must not panic, emit an opaque error marker, silently drop text, or partially transform an uncertain shape. Compound values may still compose an unchanged type component with their validated source identifiers. The only formatting error returned is an error from the destination formatter.
 
-| Macro | Validation requirement | Display composition |
-|---|---|---|
-| `of_var!` | Binding or constant resolves | Lexical identifier |
-| `of_function!` | Function item and supplied arguments resolve | Lexical function plus semantic type arguments |
-| `of_type!` | Type resolves, including `?Sized` forms | Semantic type |
-| `of_field!` | Field access type-checks | Semantic owner plus lexical field |
-| `of_method!` | Associated function or method item resolves | Semantic owner and arguments plus lexical method |
-| `of_variant!` | Variant shape matches | Semantic owner plus lexical variant |
+`TypeName` stores the compiler's `&'static str` and defers parsing and shortening until `Display` is invoked. The implementation may allocate while parsing or rendering. Repeated formatting may repeat that work. These costs are accepted until measurement demonstrates a real problem.
 
-### Edge cases to settle
+### Dependency policy
 
-- Generic functions whose parameters cannot be inferred in the identifier-only
-  form.
-- The existing `::<..>` placeholder for validating a generic function while
-  omitting its arguments.
-- Generic and qualified owners requiring `<Type>::member` syntax.
-- `Self` inside generic and non-generic implementations.
-- Unit, tuple, and struct variants without weakening shape validation.
-- Zero, one, and many generic arguments without trailing punctuation bugs.
-- Whether the displayed owner uses `Owner::member`, `<Owner>::member`, or a
-  policy selected by I5.
+`syn` is an accepted correctness dependency. Maintaining a private subset of Rust's evolving type grammar would duplicate substantial work and recreate the failure mode this crate is intended to avoid, especially for generated APIs such as `windows-rs`.
 
-### Non-goals
+`quote` and `prettyplease` are not automatically required or prohibited. Stage 2 must retain either dependency only when it contributes to grammar-preserving output that would otherwise require fragile custom logic. Compile time, binary size, and formatting cost are relevant measurements, but they do not override correctness.
 
-- A procedural macro merely to normalize macro input syntax.
-- Runtime lookup of identifier names.
-- Forcing all categories into one public concrete type before a real shared use
-  case requires it.
-- Preserving the current `&'static str` return type.
+## Macro validation contract
 
-### Acceptance criteria
+Name production and validation are separate responsibilities inside each macro:
 
-- Every macro output implements `Display` without allocating.
-- Every referenced item is still rejected at compile time when misspelled or of
-  the wrong shape.
-- Type aliases and generic parameters follow I1 consistently in every owner or
-  argument position.
-- Macro expansions contain no global cache or synchronization primitive.
-- Existing IDE completion behavior is retained or any regression is explicitly
-  documented and justified.
+```text
+ordinary Rust syntax
+    -> rustc verifies the item, owner, argument count, argument kinds, and shape
 
-### Open discussion questions
+stringify!(ident) plus TypeName construction
+    -> produces the source identifier and resolved type components
+```
 
-- Is a common public trait useful beyond `Display`, or would it add abstraction
-  without a concrete consumer?
-- Should lexical-only macro values expose their identifier as `&'static str`?
-- Should the function placeholder remain `::<..>` or be replaced in the major
-  version?
-- Should member values offer separate accessors for owner and leaf identifier?
+No macro arm may weaken validation merely to accept more inputs. If rustc cannot form the referenced item with the supported explicit syntax, `pretty-name` does not claim to name it.
 
-## M1-I4: Runtime and crate simplification
+### Generic functions and methods
 
-### Goal
-
-Remove infrastructure made unnecessary by lazy borrowed values and establish the
-smallest justified platform and dependency footprint.
-
-### Owned decisions
-
-- Removal of process-wide and call-site caches.
-- Removal of leaked allocations and synchronization.
-- Dependency removal or retention.
-- `no_std` and optional `alloc` configuration.
-- Module boundaries for formatting and macro-support internals.
-- Minimum supported Rust version policy for the major release.
-
-### Expected removals
-
-If I2 and I3 satisfy their contracts without eager parsing, this intention should
-remove:
-
-- `TYPE_NAME_CACHE` and its `RwLock<HashMap<...>>`.
-- The `__with_cache!` macro and its per-call-site maps.
-- `Box::leak` as a name-lifetime strategy.
-- Runtime use of `syn`, `quote`, and `prettyplease`.
-- Documentation describing cache hits as the normal performance model.
-
-The preferred outcome is a dependency-free core using `core::any` and
-`core::fmt`. An `alloc` feature may provide owned conveniences if they cannot be
-expressed through the standard `ToString` implementation alone.
-
-### Safety and failure handling
-
-- No `unsafe` code is expected or justified by the current design.
-- Lock poisoning and re-entrant initialization disappear with the caches.
-- Allocation failure is limited to caller-requested ownership or the caller's
-  formatting destination.
-- Feature combinations must not silently change naming semantics.
-
-### Performance considerations
-
-- Removing caches trades repeated linear scans for the absence of lookup,
-  locking, allocation, and permanent memory growth.
-- Dependency and binary-size effects must be measured rather than inferred only
-  from source size.
-- Public value types should avoid unnecessary boxing and dynamic dispatch.
-- Generic macro result types must be checked for code-size growth.
-
-### Non-goals
-
-- Adding a replacement cache before benchmarks demonstrate a real need.
-- Keeping dependencies solely to minimize the textual size of the formatter.
-- Feature flags that create several subtly different semantic contracts.
-
-### Acceptance criteria
-
-- No name operation relies on global mutable state or intentionally leaked
-  memory.
-- The core crate builds in its documented `no_std` configuration.
-- Every remaining dependency has a documented necessity that cannot be met
-  simply in the crate.
-- The supported feature matrix is exercised by CI or equivalent release checks.
-- I6 benchmarks show the cost profile of the simplified design.
-
-### Open discussion questions
-
-- Should `alloc` be enabled by default for `ToString` convenience?
-- Is dependency-free operation a release requirement or a preferred outcome?
-- What explicit MSRV promise should accompany the major version?
-- Should experimental enclosing-function naming live behind a feature or outside
-  M1 entirely?
-
-## M1-I5: Formatting policy
-
-### Goal
-
-Define the default human-readable format and a restrained customization model
-without recreating a complete Rust pretty-printer or `tynm`'s function-family
-API.
-
-### Owned decisions
-
-- Default qualification depth.
-- Optional retention of leading or trailing module segments.
-- Generic-argument visibility.
-- Lifetime presentation.
-- Closure and compiler-generated suffix presentation.
-- Canonical punctuation for owners, members, and generic arguments.
-
-### Proposed defaults
-
-- Remove all module qualification from type paths.
-- Preserve all type and const arguments.
-- Hide diagnostic placeholder lifetimes when doing so is unambiguous.
-- Preserve mutability, pointer kind, ABI, unsafety, trait bounds, and associated
-  bindings.
-- Preserve unfamiliar compiler-generated text rather than guessing.
-- Expose the original full compiler description separately.
-
-### Candidate customization model
-
-Prefer one small options value or builder-style adapter methods:
+M1 supports function and method generic arguments only when every required, caller-specifiable generic argument is a type and is written explicitly.
 
 ```rust
-type_name::<T>()
-    .qualified(1)
-    .without_user_generics()
+of_function!(function::<u32, String>)
+of_method!(Owner::method::<u32, String>)
 ```
 
-The example is illustrative, not an accepted API. Customization should remain
-orthogonal: qualification controls paths, while generic visibility controls
-arguments. Avoid a growing set of top-level functions for every combination.
+Validation forms the complete function item or associated method item, such as `let _ = &function::<u32, String>;`. The same rule applies to free functions and associated methods.
 
-### Collision policy
+The following forms are unsupported:
 
-Short display names are not identities. When two paths shorten to the same text,
-the default remains readable rather than globally unique. Callers needing local
-disambiguation should be able to retain some qualification or use the original
-description.
+- Omitting type arguments and relying on inference to determine the function item.
+- `_` placeholders in the generic argument list.
+- The existing `::<..>` placeholder.
+- Direct const generic arguments such as `function::<16>`.
+- Generic items whose item type cannot be fully determined through the supported explicit type arguments, including inference-heavy generated methods.
+- Any unchecked arm that merely stringifies a generic item.
 
-### Non-goals
+Late-bound lifetimes and compiler-synthetic parameters cannot normally be written in a turbofish and are not displayed as function arguments. A function or method that cannot be validated under this contract is outside M1. An external macro may resolve a domain-specific call and compose `pretty-name` values without weakening this crate's guarantees.
 
-- Stable canonical Rust syntax.
-- User-defined renaming rules or registries in M1.
-- Automatic uniqueness across crates or processes.
-- Formatting arbitrary source tokens.
+Direct const generic arguments are excluded only from function and method argument lists. They remain supported wherever they occur inside a resolved type description.
 
-### Acceptance criteria
+### Validation requirements by macro
 
-- Defaults are specified with examples covering every supported type category.
-- Qualification and generic controls compose without special-case behavior.
-- The public customization surface remains small enough to explain in one
-  documentation section.
-- I2 can implement the policy in one streaming pass with bounded memory.
-- I3 has one canonical grammar for compound names.
+| Macro | Required rustc validation | Result type |
+|---|---|---|
+| `of_type!` | The input is a valid type, including `?Sized` forms where supported | `TypeName` |
+| `of_var!` | The binding or constant resolves | `IdentifierName` |
+| `of_function!` | The complete function item resolves under the generic contract | `FunctionName` |
+| `of_field!` | Field access type-checks for the owner | `MemberName` |
+| `of_method!` | The complete associated method item resolves | `MemberName` |
+| `of_variant!` | The unit, tuple, or struct variant pattern has the requested shape | `MemberName` |
 
-### Open discussion questions
+Misspelled items, wrong variant shapes, missing generic arguments, unsupported const arguments, and invalid owner types must fail during compilation.
 
-- Is suffix qualification alone sufficient, or is leading qualification useful?
-- Should omission of non-standard-library generic arguments be supported?
-- Should closures retain the enclosing function path by default?
-- Should member owners always use `<Owner>::member` for syntactic uniformity, or
-  prefer the less noisy `Owner::member` where possible?
+## Ownership and runtime policy
 
-## M1-I6: Verification, migration, and positioning
+`Box<[TypeName]>` gives every compound name one owned, lifetime-independent representation. This deliberately accepts construction-time allocation for generic argument lists instead of exposing const-generic arity in the public type or creating compiler-channel-dependent behavior.
 
-### Goal
+M1 removes the legacy process-wide and call-site caches. The core design does not require global state, locking, cache poisoning recovery, or intentionally leaked result strings. In particular, `Box::leak` or an equivalent operation must not be used solely to manufacture a `'static` lifetime.
 
-Build the evidence needed to accept a breaking semantic and representation
-change, and explain why the new crate deserves a distinct place in the ecosystem.
+Caching is composition rather than core naming semantics. An optional helper based on an established caching crate may be considered after the core API is correct, but it is not an M1 requirement and must not change displayed names or validation behavior.
 
-### Owned decisions
+No `unsafe` code is expected. Any proposal to introduce it requires a separate safety contract and justification.
 
-- Test corpus and test-layer responsibilities.
-- Performance and binary-size benchmarks.
-- Compatibility inventory and migration guidance.
-- README narrative and comparison language.
-- Release gates for the major version.
+## Toolchain policy
 
-### Correctness strategy
+Rust 1.85, the first release supporting Edition 2024, is the initial baseline, not a promise to avoid clearer language or library features. The implementation should prefer clarity and maintainability over preserving that baseline. Raising the required stable version, or using nightly when it materially improves the design, is acceptable after an explicit review.
+
+Nightly must not be introduced merely to avoid an ordinary owned value, and the crate must not acquire different name semantics across toolchains.
+
+`std`, allocation, and third-party dependencies are acceptable. `no_std` and a dependency-free build may be revisited after `1.0` if they fall out naturally without fragmenting behavior.
+
+## Linear implementation stages
+
+Each stage begins only after the preceding exit criteria are satisfied. Tests for behavior introduced by a stage are part of that stage rather than deferred wholesale to the end.
+
+### Stage 1: Freeze semantics and the public surface
+
+Tasks:
+
+- Encode the resolved-type and source-identifier vocabulary in crate-level design notes.
+- Confirm the four opaque public value types and their private fields.
+- Confirm the fixed `Display` grammar and derived `Debug` behavior.
+- Inventory every existing public function and macro against the new result types.
+- Record the generic-function exclusions as intentional limitations.
+
+Exit criteria:
+
+- Every public operation maps unambiguously to the semantic contract.
+- No lexical type-name arm or raw inspection API remains in the design.
+- The public API contains no abstraction without a concrete M1 consumer.
+
+### Stage 2: Build the grammar-aware `TypeName` formatter
+
+Tasks:
+
+- Make `type_name::<T>()`, `type_name_of_val`, and `of_type!` return `TypeName`.
+- Parse compiler descriptions with `syn`.
+- Remove module qualification structurally while preserving every other parsed component.
+- Preserve unparseable compiler descriptions unchanged.
+- Derive `Debug` and implement `Display` without a public raw accessor.
+- Audit whether `quote` and `prettyplease` are necessary for lossless output.
+
+Correctness coverage includes primitives, aliases, imports, `Self`, references, raw pointers, arrays, slices, tuples, function types, trait objects, associated bindings, nested generics, consts nested in types, closures, async blocks, and unfamiliar or malformed diagnostic input.
+
+Exit criteria:
+
+- No supported type shape loses semantic information other than intentionally removed module qualification.
+- Unsupported descriptions round-trip unchanged without panic.
+- No heuristic parser or weaker fast path exists.
+
+### Stage 3: Introduce opaque compound values
+
+Tasks:
+
+- Add `IdentifierName`, `FunctionName`, and `MemberName` with private fields.
+- Store generic type arguments in `Box<[TypeName]>` for every compiler channel.
+- Implement the fixed compound `Display` grammar.
+- Derive conventional structural `Debug`.
+- Keep construction internal to the crate and its exported macros.
+
+Exit criteria:
+
+- Values can be returned and stored without borrowed temporary data.
+- Zero, one, and many arguments format with canonical punctuation.
+- The only public ownership conversion is standard `.to_string()`.
+
+### Stage 4: Rebuild macros around strict rustc validation
+
+Tasks:
+
+- Rebuild every macro so validation uses real Rust syntax before capturing a source identifier.
+- Apply one explicit-type-argument rule to functions and associated methods.
+- Resolve all owner and argument types through `TypeName`.
+- Preserve IDE completion where possible without weakening validation.
+- Reject placeholders, inferred arguments, direct const generic arguments, and wrong item shapes with compile-time errors.
+
+Exit criteria:
+
+- Invalid identifiers and shapes fail to compile in every macro category.
+- Functions and associated methods enforce the same generic guarantee.
+- Alias, import, generic-parameter, and `Self` behavior agrees across all macros.
+- No supported form relies on `use` as a substitute for a fully resolved function item.
+
+### Stage 5: Remove legacy runtime and compatibility infrastructure
+
+Tasks:
+
+- Remove process-wide and per-call-site caches, locks, and cache keys.
+- Remove leaked strings and `&'static str` compatibility paths.
+- Remove the `::<..>` placeholder and lexical simple-type shortcuts.
+- Remove documentation and tests for old pointer identity, cache behavior, and compile-time string results.
+- Simplify modules and dependencies only where doing so preserves the accepted behavior.
+
+Exit criteria:
+
+- No public operation returns a legacy string solely for compatibility.
+- No naming operation requires global mutable state or synchronization.
+- No allocation or dependency claim exceeds what the implementation proves.
+
+### Stage 6: Complete the correctness corpus
 
 Use complementary test layers:
 
-- Unit tests for streaming formatter states and malformed-input fallback.
-- Integration tests for public values and every macro category.
-- Compile-fail documentation tests for invalid identifiers, fields, methods,
-  variants, and types.
-- Documentation tests for normal formatting and allocation-on-demand usage.
-- A compiler-description corpus covering primitives, references, pointers,
-  arrays, tuples, functions, traits, associated bindings, const generics,
-  closures, async blocks, aliases, `Self`, and generic monomorphizations.
+- Focused unit tests for each formatter transformation and unchanged fallback.
+- Integration tests for every public function, value type, and macro category.
+- Compile-pass tests for supported aliases, imports, `Self`, generic owners, qualified owners, and fully explicit generic functions and methods.
+- Compile-fail tests for misspellings, wrong field and variant shapes, omitted generic arguments, `_`, `::<..>`, direct const generic arguments, and inference-heavy unsupported methods.
+- Rustdoc tests for normal `Display`, `.to_string()`, and derived `Debug` use.
+- A broad compiler-description corpus with individually diagnosable cases.
 
-Tests should describe one observable behavior each. Small table-driven groups
-are appropriate for formatter inputs, while macro validation cases should remain
-individually named so failures identify the broken language construct.
+`windows-rs` is a primary regression target rather than an anecdote. The suite must include representative generated module and type shapes that heuristic name crates mishandle. At least one realistic fixture should exercise the exact failure family that motivated this redesign.
 
-### Performance strategy
+Tests should normally demonstrate one behavior each. Table-driven formatter cases are appropriate when each row remains individually identifiable; compile-fail cases should remain separately named so a failure identifies the broken guarantee immediately.
 
-Measure release builds for:
+Exit criteria:
 
-- Adapter construction without formatting.
-- Formatting short and deeply nested types into an existing buffer.
-- Formatting the same name repeatedly.
-- Explicit conversion to `String`.
-- Multi-threaded formatting without shared state.
-- Binary size and dependency footprint for a minimal consumer.
+- The supported behavior matrix has positive and negative coverage.
+- Every known `windows-rs` regression case passes without a heuristic exception.
+- Unknown compiler descriptions cannot cause a naming panic or silent loss.
 
-Compare the vNext adapter with the current cached implementation, an eager
-`String` formatter, and a representative lazy scanner such as `disqualified`.
-Benchmarks must separate first-use cost from steady-state cost and must not claim
-zero cost merely because work is deferred.
+### Stage 7: Stabilize documentation, positioning, and measured costs
 
-### Migration inventory
+Tasks:
 
-The major-version guide must cover:
+- Rewrite the README and rustdoc around correctness and the two-source semantic model.
+- Document boxed generic arguments, unsupported direct const arguments, and inference-heavy generic limitations prominently.
+- State that compiler type descriptions and derived `Debug` output are diagnostic and unstable.
+- Audit the public API again and remove anything without a demonstrated user.
+- Compare neighboring crates with concrete, reproducible cases, including `windows-rs`, rather than broad superiority claims.
+- Measure construction, parsing, formatting, repeated formatting, and explicit `.to_string()` costs in release builds after correctness is complete.
 
-- `&'static str` results becoming display values.
-- Adding `.to_string()` only where owned text is required.
-- Using `%name` or `{name}` for diagnostics and tracing.
-- Type aliases and generic parameters changing from source spelling to resolved
-  type descriptions.
-- Const and static initializers that can no longer use semantic type names.
-- Removal of cache-related behavior and pointer-identity assumptions.
-- Any macro syntax changes accepted by I3.
+Performance measurements characterize the implementation; they do not become README guarantees automatically. Binary size and dependency count may be reported for context but are not release gates. No migration guide or compatibility shim is required: downstream users should treat `1.0` as a new crate with new aims despite the coincidentally reused package name.
 
-### Positioning
+Exit criteria:
 
-The release narrative should emphasize the combined capability rather than
-claiming to replace every neighboring crate:
+- README and rustdoc describe only implemented, tested behavior.
+- Ecosystem comparisons are specific, fair, and reproducible.
+- The minimal public surface is accepted for `1.0`.
+- Tests and Clippy pass on the supported toolchain.
 
-> `pretty-name` composes compiler-resolved type descriptions with
-> compile-time-validated Rust identifiers, then formats them lazily without
-> allocation or global state.
+## Explicitly deferred features
 
-The comparison should explain that:
+The following are outside M1 and may be reconsidered only after the `1.0` core is correct:
 
-- `nameof` is intentionally lexical and const-friendly.
-- `disqualified` is a minimal lazy type-name shortener.
-- `tynm` offers structured and configurable type-name parsing.
-- `pretty-type-name` eagerly returns an owned shortened string.
-- `pretty-name` covers compound language constructs whose type and identifier
-  components require different sources.
+- Direct const generic arguments to functions or methods.
+- Domain-specific resolution for inference-heavy generated APIs.
+- Formatting options, qualification depth, and alternate presentation styles.
+- Raw or component accessors and string-like behavior.
+- A shared public name trait.
+- Declaration-side or enclosing-function discovery.
+- Built-in or exported caching helpers.
+- `no_std`, dependency-free, or stable/nightly storage variants.
+- Compatibility helpers for pre-`1.0` behavior.
 
-### Acceptance criteria
+## Milestone risks and responses
 
-- All behavioral changes have migration examples.
-- Correctness and performance claims are backed by repeatable tests or
-  benchmarks.
-- `cargo test --locked` passes for the supported feature matrix.
-- `cargo clippy --all-targets --all-features --locked -- -D warnings` introduces
-  no warnings.
-- README and rustdoc examples use the final value-oriented API.
-- The release documentation states the diagnostic stability limits prominently.
-
-### Open discussion questions
-
-- Which benchmark results are important enough to publish in the README?
-- Should compatibility helpers exist temporarily, or should the major version
-  make a clean break?
-- Should ecosystem comparisons be maintained as documentation or kept in the
-  release announcement?
-- Is M1 complete at API stabilization, or only after publishing the major
-  release?
-
-## Integration gates
-
-### Gate A: Semantic contract accepted
-
-Required intentions: I1, with the default portion of I5.
-
-Exit conditions:
-
-- Semantic and lexical components are defined for every macro.
-- Default qualification and generic presentation are decided.
-- Diagnostic stability limitations are accepted.
-
-### Gate B: Stable value contract
-
-Required intentions: I2 and I3.
-
-Exit conditions:
-
-- Core public value types and lifetimes are agreed.
-- Compound values can format without allocation.
-- Validation expressions remain compile-time checked.
-- I4 can remove the old infrastructure without leaving compatibility shims in
-  the hot path.
-
-### Gate C: Simplified crate profile
-
-Required intention: I4.
-
-Exit conditions:
-
-- Old caches, leaks, and unnecessary dependencies are gone.
-- Platform and feature promises are verified.
-- No unresolved runtime ownership mechanism remains.
-
-### Gate D: Major-version release readiness
-
-Required intention: I6, incorporating the accepted outputs of I1 through I5.
-
-Exit conditions:
-
-- Correctness corpus, compile-fail cases, and documentation tests pass.
-- Performance and binary-size results are reviewed.
-- Migration guide and public positioning are complete.
-
-## Milestone risks
-
-| Risk | Consequence | Mitigation owner |
-|---|---|---|
-| Compiler descriptions change | Output changes or new shapes appear | I1 documents limits; I2 preserves unknown input; I6 maintains corpus |
-| Streaming formatter drops syntax | Misleading diagnostics | I2 uses lossless fallback; I6 tests adversarial forms |
-| Lazy values become too large | Stack traffic and code-size growth | I3 compares representations; I6 benchmarks size and codegen |
-| Short names collide | Ambiguous diagnostics | I5 supplies qualification controls and original access |
-| Macro rewrite harms IDE support | Worse developer experience | I3 tests representative editor flows and preserves simple arms where useful |
-| `no_std` work fragments behavior | Feature-dependent semantics | I4 keeps one semantic contract and tests the feature matrix |
-| Major migration is cumbersome | Adoption stalls | I6 provides direct before/after recipes |
+| Risk | Response |
+|---|---|
+| Compiler descriptions change | Treat them as diagnostic input, preserve unparseable text, and maintain a compiler-description corpus. |
+| Grammar-aware parsing costs more | Accept the cost for correctness, then measure it after the feature set is stable. |
+| `syn` cannot parse a compiler-generated description | Return that description unchanged instead of guessing. |
+| Macro syntax accepts an item it cannot fully validate | Reject the form; never introduce an unchecked fallback. |
+| Boxed argument lists allocate | Document the allocation and revisit it only with evidence and without changing semantics. |
+| Shortened names collide | Document that `Display` is presentation rather than identity. |
+| IDE completion regresses | Test representative editor-facing forms and prefer native-looking macro syntax where guarantees remain intact. |
+| Comparisons become promotional rather than factual | Tie every comparison to a reproducible input and observed output. |
 
 ## M1 definition of done
 
 M1 is complete when:
 
-- All type-bearing components use the semantic compiler description.
-- All non-type identifiers are compile-time validated and lexically captured.
-- Public name values format lazily without an intermediate allocation.
-- Formatting requires no global cache, synchronization, or leaked result.
-- Unsupported compiler descriptions cannot cause a naming panic.
-- Default formatting and customization behavior are documented and tested.
-- The documented platform and feature matrix passes tests and clippy.
-- Benchmarks characterize construction, formatting, ownership, concurrency, and
-  binary-size costs.
-- A migration guide explains every breaking semantic, type, and const-context
-  change.
-- The README presents the new diagnostic-name niche clearly and accurately.
-
-## Intention discussion protocol
-
-Use the stable intention ID when starting or revisiting a discussion, for
-example: `Discuss M1-I3`. A revised intention should record any changed contract
-and name every downstream intention that must be re-audited. Approval of one
-intention does not imply approval of another, except through the explicit
-integration gates above.
+- Every type-bearing component is a resolved type with no lexical exception.
+- Every source identifier is validated by ordinary Rust syntax.
+- Generic functions and methods require every supported type argument explicitly and reject unsupported generic forms.
+- Public names are opaque values implementing `Display` and derived `Debug`.
+- Compound generic arguments use `Box<[TypeName]>` consistently.
+- Type shortening is grammar-aware, and uncertain input is preserved unchanged.
+- No heuristic scanner, global name cache, synchronization primitive, or lifetime-elimination leak remains.
+- The complete positive, negative, and `windows-rs` correctness corpus passes.
+- README and rustdoc state all limitations and make no unverified guarantees.
+- The public API has been minimized and accepted as the new `1.0` contract.
