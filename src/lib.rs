@@ -16,48 +16,6 @@ pub use name::identifier_name as __identifier_name;
 #[doc(hidden)]
 pub use name::member_name as __member_name;
 
-/// Internal helper macro for caching dynamically generated names process-wide.
-///
-/// Each invocation owns a cache keyed by the supplied compiler type names. Keying the
-/// cache is required because local static items are shared by every monomorphization of
-/// a generic function containing the invocation. One result is intentionally leaked per
-/// distinct key so callers can keep receiving `&'static str`.
-#[doc(hidden)]
-#[macro_export]
-macro_rules! __with_cache {
-    ([$($key:expr),+ $(,)?] => $expr:expr) => {{
-        use std::collections::HashMap;
-        use std::sync::{LazyLock, RwLock};
-
-        static CACHE: LazyLock<RwLock<HashMap<Vec<&'static str>, &'static str>>> =
-            LazyLock::new(|| RwLock::new(HashMap::new()));
-
-        let cache_key = [$($key),+];
-        let cached = CACHE
-            .read()
-            // CONTEXT: A panic cannot invalidate previously inserted immutable strings.
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .get(cache_key.as_slice())
-            .copied();
-        if let Some(cached) = cached {
-            cached
-        } else {
-            let result = $expr;
-            let mut cache = CACHE
-                .write()
-                // CONTEXT: A panic cannot invalidate previously inserted immutable strings.
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if let Some(cached) = cache.get(cache_key.as_slice()).copied() {
-                cached
-            } else {
-                let result: &'static str = Box::leak(result.into_boxed_str());
-                cache.insert(cache_key.to_vec(), result);
-                result
-            }
-        }
-    }};
-}
-
 /// Gets the validated source identifier of a local variable or constant.
 ///
 /// This macro checks that the identifier is valid in the current scope. If the identifier
