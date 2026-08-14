@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 mod type_name;
+pub use type_name::TypeName;
 pub use type_name::type_name;
 pub use type_name::type_name_of_val;
 
@@ -105,45 +106,32 @@ macro_rules! of_function {
             format!(
                 "{}::<{}>",
                 stringify!($ident),
-                vec![$($crate::type_name::<$arg>()),*].join(", ")))
+                vec![$($crate::type_name::<$arg>().to_string()),*].join(", ")))
     }};
 }
 
-/// Get the name of the given type as a `&'static str`.
+/// Gets a diagnostic name for the compiler-resolved type.
 ///
-/// This macro resolves `Self` to the appropriate type when used inside an `impl` block.
-///
-/// If the given type is a single identifier and is not `Self`, the macro expands to a
-/// string literal at compile time. For more complex types, the macro uses runtime type
-/// name retrieval with caching.
+/// This macro resolves aliases, renamed imports, generic parameters, and `Self` to the
+/// underlying type selected by the compiler.
 ///
 /// # Examples
 /// ```rust
 /// struct MyStruct;
 /// struct MyGenericStruct<T>(std::marker::PhantomData<T>);
-/// assert_eq!(pretty_name::of_type!(MyStruct), "MyStruct");
-/// assert_eq!(pretty_name::of_type!(MyGenericStruct<u32>), "MyGenericStruct<u32>");
+/// assert_eq!(pretty_name::of_type!(MyStruct).to_string(), "MyStruct");
+/// assert_eq!(
+///     pretty_name::of_type!(MyGenericStruct<u32>).to_string(),
+///     "MyGenericStruct<u32>");
 /// ```
 ///
-/// Simple identifiers preserve source spelling, while generic, qualified, and `Self`
-/// types use [`type_name`](crate::type_name). This distinction is observable for type
-/// aliases. Call [`type_name`](crate::type_name) directly when semantic resolution is
-/// required consistently.
-///
-/// Invalid simple identifiers are rejected at compile time:
+/// Invalid types are rejected at compile time:
 ///
 /// ```compile_fail
 /// let _ = pretty_name::of_type!(DefinitelyNotAType);
 /// ```
 #[macro_export]
 macro_rules! of_type {
-    (Self) => {{
-        $crate::type_name::<Self>()
-    }};
-    ($ty:ident) => {{
-        let _: ::core::marker::PhantomData<$ty> = ::core::marker::PhantomData;
-        stringify!($ty)
-    }};
     ($ty:ty) => {{
         $crate::type_name::<$ty>()
     }};
@@ -248,7 +236,7 @@ macro_rules! of_method {
                 "{}::{}::<{}>",
                 $crate::type_name::<$ty>(),
                 stringify!($method),
-                vec![$($crate::type_name::<$arg>()),*].join(", ")))
+                vec![$($crate::type_name::<$arg>().to_string()),*].join(", ")))
     }};
 
     (<$ty:ty> :: $method:ident) => {{
@@ -269,7 +257,7 @@ macro_rules! of_method {
                 "<{}>::{}::<{}>",
                 $crate::type_name::<$ty>(),
                 stringify!($method),
-                vec![$($crate::type_name::<$arg>()),*].join(", ")))
+                vec![$($crate::type_name::<$arg>().to_string()),*].join(", ")))
     }};
 }
 

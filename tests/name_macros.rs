@@ -16,8 +16,8 @@ mod fixtures {
         pretty_name::of_function!(generic_function::<T>)
     }
 
-    /// Gets the source spelling of a possibly unsized generic type parameter.
-    pub fn generic_type_source_name<T: ?Sized>() -> &'static str {
+    /// Gets the resolved name of a possibly unsized generic type parameter.
+    pub fn generic_type_name<T: ?Sized>() -> pretty_name::TypeName {
         pretty_name::of_type!(T)
     }
 
@@ -35,7 +35,7 @@ mod fixtures {
         pub fn generic_method<T>(&self) {}
 
         /// Gets this owner's type name through `Self`.
-        pub fn self_type_name() -> &'static str {
+        pub fn self_type_name() -> pretty_name::TypeName {
             pretty_name::of_type!(Self)
         }
 
@@ -127,7 +127,7 @@ use fixtures::{
     generic_function,
     generic_function_name,
     generic_pair,
-    generic_type_source_name,
+    generic_type_name,
     plain_function,
 };
 
@@ -184,37 +184,38 @@ fn function_cache_reuses_one_result_across_threads() {
     assert!(std::ptr::eq(first, second));
 }
 
-/// Verifies simple type identifiers preserve aliases while semantic forms resolve them.
+/// Verifies simple and compound type forms both resolve aliases.
 #[test]
-fn type_macro_distinguishes_source_spelling_from_semantic_resolution() {
-    /// A local alias used to expose the macro's source-spelling behavior.
+fn type_macro_resolves_aliases_consistently() {
+    /// A local alias used to verify semantic resolution.
     type IntegerAlias = u32;
 
     assert_eq!(
         (
-            pretty_name::of_type!(IntegerAlias),
-            pretty_name::of_type!(Option<IntegerAlias>)),
-        ("IntegerAlias", "Option<u32>"));
+            pretty_name::of_type!(IntegerAlias).to_string(),
+            pretty_name::of_type!(Option<IntegerAlias>).to_string()),
+        ("u32".to_owned(), "Option<u32>".to_owned()));
 }
 
 /// Verifies qualified generic type paths are semantically shortened.
 #[test]
 fn type_macro_shortens_qualified_generic_paths() {
     assert_eq!(
-        pretty_name::of_type!(std::collections::HashMap<std::string::String, i32>),
+        pretty_name::of_type!(
+            std::collections::HashMap<std::string::String, i32>).to_string(),
         "HashMap<String, i32>");
 }
 
 /// Verifies `Self` resolves to the concrete owner from an integration crate.
 #[test]
 fn type_macro_resolves_self_to_the_concrete_owner() {
-    assert_eq!(PlainOwner::self_type_name(), "PlainOwner");
+    assert_eq!(PlainOwner::self_type_name().to_string(), "PlainOwner");
 }
 
-/// Verifies identifier validation does not impose an implicit `Sized` bound.
+/// Verifies semantic resolution does not impose an implicit `Sized` bound.
 #[test]
 fn type_macro_accepts_unsized_generic_parameters() {
-    assert_eq!(generic_type_source_name::<str>(), "T");
+    assert_eq!(generic_type_name::<str>().to_string(), "str");
 }
 
 /// Verifies the simple field form returns its source-spelled owner and field.

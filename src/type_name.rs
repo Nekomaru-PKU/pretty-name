@@ -1,91 +1,84 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
-use std::collections::hash_map::Entry;
-use std::sync::{LazyLock, RwLock};
+use std::fmt;
 
 use quote::quote;
+use syn::visit_mut::{self, VisitMut};
 use syn::*;
 
-/// Process-wide cache from compiler-generated type names to their pretty forms.
+/// A compiler-resolved type description with human-readable [`Display`] formatting.
 ///
-/// The compiler names are already `&'static str`, and each owned pretty form is leaked
-/// once so the public API can retain its historical `&'static str` return type.
-static TYPE_NAME_CACHE: LazyLock<RwLock<HashMap<&'static str, &'static str>>> =
-    LazyLock::new(|| RwLock::new(HashMap::new()));
-
-/// Get the human-friendly type name of given type `T`.
-///
-/// Note that you can also use the `pretty_name::of_type!(T)` macro, which expands to a
-/// string literal at compile time if `T` is a simple type identifier, and expands to a
-/// call to this function otherwise.
-///
-/// The returned name is intended for diagnostics rather than persistent identity. Rust
-/// does not guarantee the exact format or uniqueness of [`std::any::type_name`]. If a
-/// compiler-generated name is not valid Rust type syntax, this function returns that
-/// original name instead of replacing it with an opaque error marker.
+/// The stored compiler description remains private and is parsed only when the value is
+/// formatted. If the description is unfamiliar to the formatter, it is displayed
+/// unchanged instead of being partially shortened.
 ///
 /// # Examples
+///
 /// ```rust
 /// use pretty_name::type_name;
-/// assert_eq!(type_name::<Option<i32>>(), "Option<i32>");
-/// assert_eq!(type_name::<&str>(), "&str");
-/// assert_eq!(type_name::<Vec<Box<dyn std::fmt::Debug>>>(), "Vec<Box<dyn Debug>>");
+///
+/// let name = type_name::<std::collections::HashMap<String, i32>>();
+/// assert_eq!(name.to_string(), "HashMap<String, i32>");
 /// ```
-pub fn type_name<T: ?Sized>() -> &'static str {
-    let full_name = std::any::type_name::<T>();
-    let cached = TYPE_NAME_CACHE
-        .read()
-        // CONTEXT: A panic cannot invalidate previously inserted immutable strings.
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .get(full_name)
-        .copied();
-    if let Some(cached) = cached {
-        return cached;
-    }
+#[derive(Debug)]
+pub struct TypeName(&'static str);
 
-    let pretty_name = prettify_type_name(full_name);
-    let mut cache = TYPE_NAME_CACHE
-        .write()
-        // CONTEXT: A panic cannot invalidate previously inserted immutable strings.
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    match cache.entry(full_name) {
-        Entry::Occupied(entry) => entry.get(),
-        Entry::Vacant(entry) => {
-            let pretty_name = match pretty_name {
-                Cow::Borrowed(name) => name,
-                Cow::Owned(name) => Box::leak(name.into_boxed_str()),
-            };
-            entry.insert(pretty_name)
-        }
+impl fmt::Display for TypeName {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(prettify_type_name(self.0).as_ref())
     }
 }
 
-/// Get the human-friendly type name of the given value.
+/// Gets a diagnostic name for the compiler-resolved type `T`.
 ///
-/// Note that even if the value is a reference, you should pass a reference to it to get
-/// the correct type name.
+/// Formatting removes module qualification from parseable Rust type paths while
+/// preserving the remaining type structure. Compiler descriptions outside the
+/// supported grammar are displayed unchanged.
 ///
 /// # Examples
+///
 /// ```rust
-/// use pretty_name::type_name_of_val;
-/// let value = vec![1, 2, 3];
-/// assert_eq!(type_name_of_val(&value), "Vec<i32>");
-/// assert_eq!(type_name_of_val(&value.as_slice()), "&[i32]");
+/// use pretty_name::type_name;
+///
+/// assert_eq!(type_name::<Option<i32>>().to_string(), "Option<i32>");
+/// assert_eq!(type_name::<&str>().to_string(), "&str");
+/// assert_eq!(
+///     type_name::<Vec<Box<dyn std::fmt::Debug>>>().to_string(),
+///     "Vec<Box<dyn Debug>>");
 /// ```
-pub fn type_name_of_val<T: ?Sized>(_: &T) -> &'static str {
-    type_name::<T>()
+pub fn type_name<T: ?Sized>() -> TypeName {
+    TypeName(core::any::type_name::<T>())
 }
 
-/// Produces a shortened type name or borrows the original when it cannot be parsed.
+/// Gets a diagnostic name for the compiler-resolved type of `value`.
 ///
-/// The fallback keeps compiler-generated names such as closure descriptions useful and
-/// prevents formatter implementation details from becoming runtime failure paths.
-fn prettify_type_name(type_name: &'static str) -> Cow<'static, str> {
+/// Passing a reference inspects the referenced value's type rather than adding another
+/// reference layer to the description.
+///
+/// # Examples
+///
+/// ```rust
+/// use pretty_name::type_name_of_val;
+///
+/// let value = vec![1, 2, 3];
+/// assert_eq!(type_name_of_val(&value).to_string(), "Vec<i32>");
+/// assert_eq!(type_name_of_val(&value.as_slice()).to_string(), "&[i32]");
+/// ```
+pub fn type_name_of_val<T: ?Sized>(value: &T) -> TypeName {
+    TypeName(core::any::type_name_of_val(value))
+}
+
+/// Produces a shortened type description or borrows the original when transformation
+/// cannot be completed confidently.
+fn prettify_type_name(type_name: &str) -> Cow<'_, str> {
     let Ok(mut ty) = syn::parse_str::<Type>(type_name) else {
         return Cow::Borrowed(type_name);
     };
 
-    truncate_type(&mut ty);
+    let mut shortener = TypeQualificationShortener::default();
+    shortener.visit_type_mut(&mut ty);
+    if shortener.encountered_unparsed_syntax {
+        return Cow::Borrowed(type_name);
+    }
 
     let Ok(file) = syn::parse2::<File>(quote!(type __PrettyName = #ty;)) else {
         return Cow::Borrowed(type_name);
@@ -100,7 +93,7 @@ fn prettify_type_name(type_name: &'static str) -> Cow<'static, str> {
 
 /// Extracts the right-hand type from the private alias used for pretty-printing.
 ///
-/// Whitespace around `=` is deliberately ignored because pretty-printers may wrap a
+/// Whitespace around `=` is deliberately ignored because the pretty-printer may wrap a
 /// deeply nested type onto the next line.
 fn extract_pretty_type(formatted: &str) -> Option<&str> {
     let (declaration, pretty_name) = formatted.split_once('=')?;
@@ -111,106 +104,137 @@ fn extract_pretty_type(formatted: &str) -> Option<&str> {
     pretty_name.trim().strip_suffix(';')
 }
 
-/// Removes lifetimes and module qualification recursively from a parsed type.
-fn truncate_type(ty: &mut Type) {
-    match *ty {
-        Type::Infer(_) |
-        Type::Macro(_) |
-        Type::Never(_) |
-        Type::Verbatim(_) => {}
+/// Removes module qualification from type and trait paths reached through Syn's type
+/// grammar.
+#[derive(Default)]
+struct TypeQualificationShortener {
+    /// Records syntax that Syn preserved without interpreting, requiring unchanged
+    /// fallback for the complete compiler description.
+    encountered_unparsed_syntax: bool,
+}
 
-        Type::Array(TypeArray { ref mut elem, .. }) |
-        Type::Group(TypeGroup { ref mut elem, .. }) |
-        Type::Paren(TypeParen { ref mut elem, .. }) |
-        Type::Ptr(TypePtr { ref mut elem, .. }) |
-        Type::Slice(TypeSlice { ref mut elem, .. }) => truncate_type(elem),
-
-        Type::Reference(TypeReference {
-            ref mut lifetime,
-            ref mut elem,
-            ..
-        }) => {
-            *lifetime = None;
-            truncate_type(elem);
+impl VisitMut for TypeQualificationShortener {
+    fn visit_expr_mut(&mut self, expr: &mut Expr) {
+        if matches!(expr, Expr::Verbatim(_)) {
+            self.encountered_unparsed_syntax = true;
+            return;
         }
 
-        Type::Path(ref mut ty) => truncate_path(&mut ty.path),
+        visit_mut::visit_expr_mut(self, expr);
+    }
 
-        Type::FnPtr(ref mut ty) => {
-            for input in ty.inputs.iter_mut() {
-                truncate_type(&mut input.ty);
-            }
+    fn visit_trait_bound_mut(&mut self, bound: &mut TraitBound) {
+        visit_mut::visit_trait_bound_mut(self, bound);
+        if !retain_final_path_segment(&mut bound.path) {
+            self.encountered_unparsed_syntax = true;
+        }
+    }
 
-            if let ReturnType::Type(_, ref mut ty) = ty.output {
-                truncate_type(ty.as_mut());
-            }
+    fn visit_type_mut(&mut self, ty: &mut Type) {
+        if matches!(ty, Type::Verbatim(_)) {
+            self.encountered_unparsed_syntax = true;
+            return;
         }
 
-        Type::ImplTrait(ref mut ty) => {
-            for bound in ty.bounds.iter_mut() {
-                if let &mut TypeParamBound::Trait(ref mut trt) = bound {
-                    truncate_path(&mut trt.path);
-                }
-            }
+        visit_mut::visit_type_mut(self, ty);
+    }
+
+    fn visit_type_param_bound_mut(&mut self, bound: &mut TypeParamBound) {
+        if matches!(bound, TypeParamBound::Verbatim(_)) {
+            self.encountered_unparsed_syntax = true;
+            return;
         }
 
-        Type::TraitObject(ref mut ty) => {
-            for bound in ty.bounds.iter_mut() {
-                if let &mut TypeParamBound::Trait(ref mut trt) = bound {
-                    truncate_path(&mut trt.path);
-                }
-            }
-        }
+        visit_mut::visit_type_param_bound_mut(self, bound);
+    }
 
-        Type::Tuple(ref mut ty) => {
-            for elem in ty.elems.iter_mut() {
-                truncate_type(elem);
-            }
+    fn visit_type_path_mut(&mut self, type_path: &mut TypePath) {
+        visit_mut::visit_type_path_mut(self, type_path);
+        if !shorten_type_path(type_path) {
+            self.encountered_unparsed_syntax = true;
         }
-
-        _ => { /* non_exhaustive variants */ }
     }
 }
 
-/// Retains a path's final segment and shortens types nested in its arguments.
-fn truncate_path(path: &mut Path) {
-    let path_mut = path;
-    let path = std::mem::replace(
-        path_mut,
-        Path {
-            leading_colon: None,
-            segments: Default::default(),
-        });
-
-    let Some(mut last_segment) = path.segments.into_iter().next_back() else {
-        path_mut.leading_colon = None;
-        path_mut.segments = Default::default();
-        return;
+/// Shortens a type path while retaining the trait and associated segments of a
+/// qualified-self projection.
+fn shorten_type_path(type_path: &mut TypePath) -> bool {
+    let Some(qself) = type_path.qself.as_mut() else {
+        return retain_final_path_segment(&mut type_path.path);
     };
 
-    match last_segment.arguments {
-        PathArguments::None => {}
-        PathArguments::AngleBracketed(ref mut args) => {
-            for arg in args.args.iter_mut() {
-                match *arg {
-                    GenericArgument::Type(ref mut ty) => truncate_type(ty),
-                    GenericArgument::AssocType(ref mut ty) => {
-                        truncate_type(&mut ty.ty)
-                    }
-                    _ => {}
-                }
-            }
-        }
-        PathArguments::Parenthesized(ref mut args) => {
-            for input in args.inputs.iter_mut() {
-                truncate_type(&mut input.ty);
-            }
-            if let ReturnType::Type(_, ref mut output) = args.output {
-                truncate_type(output);
-            }
-        }
+    if qself.position == 0 {
+        return !type_path.path.segments.is_empty();
     }
 
-    path_mut.leading_colon = None;
-    path_mut.segments = Some(last_segment).into_iter().collect();
+    let position = qself.position;
+    let mut segments: Vec<_> = std::mem::take(&mut type_path.path.segments)
+        .into_iter()
+        .collect();
+    if position > segments.len() {
+        return false;
+    }
+
+    let associated_segments = segments.split_off(position);
+    let Some(trait_segment) = segments.pop() else {
+        return false;
+    };
+
+    type_path.path.leading_colon = None;
+    type_path.path.segments = std::iter::once(trait_segment)
+        .chain(associated_segments)
+        .collect();
+    qself.position = 1;
+    true
+}
+
+/// Retains a path's final segment after its nested generic arguments have already been
+/// visited.
+fn retain_final_path_segment(path: &mut Path) -> bool {
+    let Some(last_segment) = std::mem::take(&mut path.segments).into_iter().next_back()
+    else {
+        return false;
+    };
+
+    path.leading_colon = None;
+    path.segments = std::iter::once(last_segment).collect();
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TypeName;
+
+    /// Verifies compiler-emitted lifetimes survive qualification removal.
+    #[test]
+    fn display_preserves_reference_lifetimes() {
+        assert_eq!(TypeName("&'named crate::model::Record").to_string(), "&'named Record");
+    }
+
+    /// Verifies qualified-self projections retain their owner, trait, and associated
+    /// type structure.
+    #[test]
+    fn display_preserves_qualified_self_projections() {
+        assert_eq!(
+            TypeName(
+                "<crate::model::Record as crate::traits::HasItem>::Item").to_string(),
+            "<Record as HasItem>::Item");
+    }
+
+    /// Verifies associated bounds are traversed through Syn's generic-argument grammar.
+    #[test]
+    fn display_shortens_associated_type_constraints() {
+        assert_eq!(
+            TypeName(
+                "dyn crate::traits::Outer<Item: crate::fmt::Display>").to_string(),
+            "dyn Outer<Item: Display>");
+    }
+
+    /// Verifies descriptions outside Rust's type grammar remain completely unchanged.
+    #[test]
+    fn display_preserves_unparseable_descriptions() {
+        let description = "crate::module::{closure@src/lib.rs:1:1}";
+
+        assert_eq!(TypeName(description).to_string(), description);
+    }
 }

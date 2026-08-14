@@ -8,11 +8,11 @@ Get the human-friendly name of types, functions, methods, fields, and enum varia
 
 ## Overview
 
-`pretty-name` provides macros and functions for extracting readable names of Rust language constructs. Depending on the syntax, a macro either returns a compile-time string literal or resolves and formats a type name at runtime. Unlike `stringify!` or `std::any::type_name`, this crate offers:
+`pretty-name` provides macros and functions for extracting readable names of Rust language constructs. Type operations return an opaque value that implements `Display`; the remaining name macros still use their legacy string results while the M1 redesign is completed. Unlike `stringify!` or `std::any::type_name`, this crate offers:
 
 ### Key Features
 
-- **Human-friendly output**: Type names are cleaned to remove module paths (`std::vec::Vec<T>` → `Vec<T>`), lifetime annotations (`&'static str` → `&str`), and other visual clutter for maximum readability.
+- **Human-friendly output**: Type names are parsed as Rust syntax so module qualification can be removed structurally (`std::vec::Vec<T>` → `Vec<T>`) without discarding other compiler-emitted type information.
 
 - **Refactoring-safe**: When you rename items using IDE refactoring tools, the macro calls are automatically updated—no more outdated string literals.
 
@@ -26,7 +26,7 @@ Get the human-friendly name of types, functions, methods, fields, and enum varia
 
 - **Natural, idiomatic syntax**: All syntax follows Rust conventions as closely as possible, making the macros feel like native language features.
 
-- **Process-wide caching**: Runtime-generated names are cached across threads. Repeated calls still perform a cache lookup, but do not repeat parsing, formatting, or allocation.
+- **Deferred type formatting**: Resolved type descriptions are stored without a cache and parsed whenever their `Display` representation is requested.
 
 ## Installation
 
@@ -45,14 +45,14 @@ cargo add pretty-name
 
 ## Usage
 
-All functions and macros listed below yield `&'static str`.
+Type operations yield `TypeName`, which can be formatted with `{}` or converted with the standard `.to_string()`. Other macros retain their legacy `&'static str` results until their M1 stages are complete.
 
 | What to get | Syntax | Example |
 |-------------|--------|---------|
 | **Type names** | | |
-| Type name from macro | `pretty_name::of_type!(T)` | `pretty_name::of_type!(Vec<i32>)` → `"Vec<i32>"` |
-| Type name | `type_name::<T>()` | `type_name::<Vec<i32>>()` → `"Vec<i32>"` |
-| Type name from value | `type_name_of_val(val)` | `type_name_of_val(&vec![1])` → `"Vec<i32>"` |
+| Type name from macro | `pretty_name::of_type!(T)` | `pretty_name::of_type!(Vec<i32>).to_string()` → `"Vec<i32>"` |
+| Type name | `type_name::<T>()` | `type_name::<Vec<i32>>().to_string()` → `"Vec<i32>"` |
+| Type name from value | `type_name_of_val(val)` | `type_name_of_val(&vec![1]).to_string()` → `"Vec<i32>"` |
 | **Variables and constants** | | |
 | Variable or constant name | `pretty_name::of_var!(ident)` | `pretty_name::of_var!(my_var)` → `"my_var"` |
 | **Functions** | | |
@@ -80,10 +80,8 @@ All functions and macros listed below yield `&'static str`.
 **Notes:**
 - Macros resolve `Self` to the appropriate type when used inside `impl` blocks.
 - Use `<Type>` syntax for types with qualified paths or generic parameters.
-- `of_type!(Type)` preserves the source spelling of a simple identifier, while generic,
-  qualified, and `Self` forms use semantic type-name resolution. This difference is
-  observable for type aliases and generic parameters; use `type_name::<T>()` when you
-  consistently need the resolved type.
+- `of_type!(Type)` always uses semantic type-name resolution. Aliases, renamed imports,
+  generic parameters, and `Self` therefore use their compiler-resolved types.
 - Type names are intended for diagnostics. Rust does not guarantee that compiler type
   names are unique or stable between compiler versions, so they should not be used as
   persistent identifiers or serialization keys.
@@ -91,9 +89,8 @@ All functions and macros listed below yield `&'static str`.
   descriptions, are returned unchanged rather than replaced with an error marker.
 
 **To Get a String Literal:**
-Simple macro forms yield string literals, while forms that require semantic type resolution return cached `&'static str` values:
+Some legacy identifier and compound macro forms still yield string literals, while forms that require compound semantic type resolution return cached `&'static str` values:
 - `pretty_name::of_var!(var)` always yields a string literal.
-- `pretty_name::of_type!(Type)`: If *Type* is a single identifier other than `Self`.
 - `pretty_name::of_function!(function)`: If *function* contains a single identifier.
 - `pretty_name::of_method!(Type::method)`: If *Type* and *method* are both single identifiers and *Type* is not `Self`.
 - `pretty_name::of_field!(Type::field)` and `pretty_name::of_variant!(Type::Variant | Type::Variant(..) | Type::Variant {..})`: If *Type* is a single identifier other than `Self`.
