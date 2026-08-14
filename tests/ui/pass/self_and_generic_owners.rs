@@ -20,6 +20,21 @@ impl<T> Owner<T> {
     }
 }
 
+/// A trait used to validate method lookup through a bounded type parameter.
+trait Named {
+    /// A trait-provided method resolved through its implementing owner type.
+    fn trait_method(&self);
+}
+
+impl<T> Named for Owner<T> {
+    fn trait_method(&self) {}
+}
+
+/// Exercises a trait-provided method through a resolved generic owner.
+fn bounded_owner_name<T: Named>() {
+    let _ = pretty_name::of_method!(T::trait_method);
+}
+
 /// A generic enum used to validate every `Self` variant shape.
 enum Choice<T> {
     /// A unit variant referenced through `Self`.
@@ -46,4 +61,5 @@ impl<T> Choice<T> {
 fn main() {
     Owner::<u32>::names();
     Choice::<u32>::names();
+    bounded_owner_name::<Owner<u32>>();
 }

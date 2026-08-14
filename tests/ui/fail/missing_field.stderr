@@ -1,0 +1,5 @@
+error[E0609]: no field `missing_field` on type `Owner`
+ --> tests/ui/fail/missing_field.rs:6:43
+  |
+6 |     let _ = pretty_name::of_field!(Owner::missing_field);
+  |                                           ^^^^^^^^^^^^^ unknown field

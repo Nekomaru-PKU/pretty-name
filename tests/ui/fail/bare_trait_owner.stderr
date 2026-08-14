@@ -1,0 +1,7 @@
+error[E0782]: expected a type, found a trait
+ --> tests/ui/fail/bare_trait_owner.rs:8:13
+  |
+8 |     let _ = pretty_name::of_method!(Named::method);
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the macro `pretty_name::of_method` (in Nightly builds, run with -Z macro-backtrace for more info)

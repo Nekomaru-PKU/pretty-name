@@ -1,0 +1,5 @@
+error[E0282]: type annotations needed
+ --> tests/ui/fail/function_inferred_argument.rs:6:49
+  |
+6 |     let _ = pretty_name::of_function!(generic::<_>);
+  |                                                 ^ cannot infer type

@@ -60,25 +60,29 @@ Naming operations yield opaque values that can be formatted with `{}` or convert
 | Generic function (include params) | `pretty_name::of_function!(ident::<T, U>)` | `pretty_name::of_function!(my_func::<u32, String>).to_string()` → `"my_func::<u32, String>"` |
 | **Struct fields** | | |
 | Field name | `pretty_name::of_field!(Type::field)` | `pretty_name::of_field!(MyStruct::field).to_string()` → `"<MyStruct>::field"` |
-| Field name (on generic type) | `pretty_name::of_field!(<Type<T>>::field)` | `pretty_name::of_field!(<MyStruct<T>>::field).to_string()` → `"<MyStruct<T>>::field"` |
-| Field name (on qualified type) | `pretty_name::of_field!(<module::Type>::field)` | `pretty_name::of_field!(<my_module::MyStruct>::field).to_string()` → `"<MyStruct>::field"` |
+| Field name (on generic type) | `pretty_name::of_field!(Type::<T>::field)` | `pretty_name::of_field!(MyStruct::<T>::field).to_string()` → `"<MyStruct<T>>::field"` |
+| Field name (on qualified type) | `pretty_name::of_field!(module::Type::field)` | `pretty_name::of_field!(my_module::MyStruct::field).to_string()` → `"<MyStruct>::field"` |
 | **Methods** | | |
 | Method name | `pretty_name::of_method!(Type::method)` | `pretty_name::of_method!(MyStruct::method).to_string()` → `"<MyStruct>::method"` |
-| Method (on generic type) | `pretty_name::of_method!(<Type<T>>::method)` | `pretty_name::of_method!(<MyStruct<T>>::method).to_string()` → `"<MyStruct<T>>::method"` |
-| Method (on qualified type) | `pretty_name::of_method!(<module::Type>::method)` | `pretty_name::of_method!(<my_module::MyStruct>::method).to_string()` → `"<MyStruct>::method"` |
+| Method (on generic type) | `pretty_name::of_method!(Type::<T>::method)` | `pretty_name::of_method!(MyStruct::<T>::method).to_string()` → `"<MyStruct<T>>::method"` |
+| Method (on qualified type) | `pretty_name::of_method!(module::Type::method)` | `pretty_name::of_method!(my_module::MyStruct::method).to_string()` → `"<MyStruct>::method"` |
 | Generic method | `pretty_name::of_method!(Type::method::<T>)` | `pretty_name::of_method!(MyStruct::method::<u32>).to_string()` → `"<MyStruct>::method::<u32>"` |
-| Generic method (on generic type) | `pretty_name::of_method!(<Type<T>>::method::<U>)` | `pretty_name::of_method!(<MyStruct<T>>::method::<u32>).to_string()` → `"<MyStruct<T>>::method::<u32>"` |
-| Generic method (on qualified type) | `pretty_name::of_method!(<module::Type>::method::<T>)` | `pretty_name::of_method!(<my_module::MyStruct>::method::<u32>).to_string()` → `"<MyStruct>::method::<u32>"` |
+| Generic method (on generic type) | `pretty_name::of_method!(Type::<T>::method::<U>)` | `pretty_name::of_method!(MyStruct::<T>::method::<u32>).to_string()` → `"<MyStruct<T>>::method::<u32>"` |
+| Generic method (on qualified type) | `pretty_name::of_method!(module::Type::method::<T>)` | `pretty_name::of_method!(my_module::MyStruct::method::<u32>).to_string()` → `"<MyStruct>::method::<u32>"` |
 | **Enum variants** | | |
 | Unit variant | `pretty_name::of_variant!(Type::Variant)` | `pretty_name::of_variant!(MyEnum::UnitVariant).to_string()` → `"<MyEnum>::UnitVariant"` |
 | Tuple variant | `pretty_name::of_variant!(Type::Variant(..))` | `pretty_name::of_variant!(MyEnum::TupleVariant(..)).to_string()` → `"<MyEnum>::TupleVariant"` |
 | Struct variant | `pretty_name::of_variant!(Type::Variant { field, .. })` | `pretty_name::of_variant!(MyEnum::StructVariant { field, .. }).to_string()` → `"<MyEnum>::StructVariant"` |
-| Variant (on generic type) | `pretty_name::of_variant!(<Type<T>>::Variant)` | `pretty_name::of_variant!(<MyEnum<u32>>::Variant).to_string()` → `"<MyEnum<u32>>::Variant"` |
-| Variant (on qualified type) | `pretty_name::of_variant!(<module::Type>::Variant)` | `pretty_name::of_variant!(<my_module::MyEnum>::Variant).to_string()` → `"<MyEnum>::Variant"` |
+| Variant (on generic type) | `pretty_name::of_variant!(Type::<T>::Variant)` | `pretty_name::of_variant!(MyEnum::<u32>::Variant).to_string()` → `"<MyEnum<u32>>::Variant"` |
+| Variant (on qualified type) | `pretty_name::of_variant!(module::Type::Variant)` | `pretty_name::of_variant!(my_module::MyEnum::Variant).to_string()` → `"<MyEnum>::Variant"` |
 
 **Notes:**
 - Macros resolve `Self` to the appropriate type when used inside `impl` blocks.
-- Use `<Type>` syntax for types with qualified paths or generic parameters.
+- Member owners must be named type paths. Use ordinary Rust path syntax such as
+  `module::Type::member` or `Type::<Args>::member`; angle-qualified and anonymous owner
+  types are unsupported.
+- Name trait-provided methods through a concrete implementor or a bounded type parameter
+  such as `T::method`. A bare trait declaration is not a resolved owner type.
 - The struct-variant form names one field because Rust also accepts a bare `{ .. }`
   pattern for unit and tuple variants; the field makes shape validation unambiguous.
 - Generic functions and methods require every caller-provided generic argument to be

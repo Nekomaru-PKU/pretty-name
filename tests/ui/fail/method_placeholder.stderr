@@ -1,0 +1,7 @@
+error: generic method arguments must be explicit types
+  --> tests/ui/fail/method_placeholder.rs:11:13
+   |
+11 |     let _ = pretty_name::of_method!(Owner::generic::<..>);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this error originates in the macro `$crate::__split_member_owner` which comes from the expansion of the macro `pretty_name::of_method` (in Nightly builds, run with -Z macro-backtrace for more info)

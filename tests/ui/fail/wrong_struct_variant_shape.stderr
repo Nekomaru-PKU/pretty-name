@@ -1,0 +1,5 @@
+error[E0026]: variant `Choice::Tuple` does not have a field named `value`
+ --> tests/ui/fail/wrong_struct_variant_shape.rs:9:54
+  |
+9 |     let _ = pretty_name::of_variant!(Choice::Tuple { value, .. });
+  |                                                      ^^^^^ variant `Choice::Tuple` does not have this field

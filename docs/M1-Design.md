@@ -167,6 +167,30 @@ No arm may accept an input by stringifying it without the corresponding compiler
 Misspelled items, invalid owners, missing generic arguments, and wrong field or variant
 shapes must fail during compilation.
 
+Member owners use named Rust paths rather than an extra pair of qualifying angle
+brackets. The supported input grammar includes:
+
+```rust
+of_field!(Type::field)
+of_method!(module::Type::method)
+of_method!(Type::<OwnerArgs>::method::<MethodArgs>)
+of_variant!(Enum::<Args>::Variant)
+```
+
+`Self`, aliases, and bounded type parameters are valid owner paths because rustc can
+resolve them as types. Angle-qualified, qualified-self, and anonymous owner types such
+as `<Type<Args>>::member`, `<T as Trait>::member`, and `<&T>::member` are unsupported.
+A trait-provided method is named through its concrete implementor or a bounded type
+parameter such as `T::method`; a bare trait declaration is not a resolved owner type.
+
+An implementation-only declarative macro partitions a named path from its final member
+segment. It recognizes path separators and balanced turbofish tokens solely to preserve
+the caller's token sequence; it does not resolve names or interpret a compiler type
+description. The emitted owner is reparsed in a Rust type position, and the emitted
+field access, method item, or variant pattern performs semantic validation. This token
+partitioning is separate from, and does not weaken, the grammar-aware `TypeName`
+formatting contract.
+
 The struct-variant form is `T::Variant { field, .. }` and requires one real field name.
 Rust accepts a bare `T::Variant { .. }` pattern for unit and tuple variants as well, so
 that shorter spelling cannot enforce the shape guarantee and is intentionally rejected.

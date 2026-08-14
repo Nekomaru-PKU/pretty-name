@@ -1,0 +1,7 @@
+error: angle-qualified owners are unsupported; use `Type::<Args>::Variant`
+  --> tests/ui/fail/angle_qualified_variant_owner.rs:10:13
+   |
+10 |     let _ = pretty_name::of_variant!(<Choice<u32>>::Unit);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this error originates in the macro `pretty_name::of_variant` (in Nightly builds, run with -Z macro-backtrace for more info)

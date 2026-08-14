@@ -1,0 +1,8 @@
+error[E0599]: no associated function or constant named `missing_method` found for struct `Owner` in the current scope
+ --> tests/ui/fail/missing_method.rs:6:44
+  |
+2 | struct Owner;
+  | ------------ associated function or constant `missing_method` not found for this struct
+...
+6 |     let _ = pretty_name::of_method!(Owner::missing_method);
+  |                                            ^^^^^^^^^^^^^^ associated function or constant not found in `Owner`

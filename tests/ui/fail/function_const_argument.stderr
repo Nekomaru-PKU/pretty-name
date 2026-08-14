@@ -1,0 +1,11 @@
+error: no rules expected `16`
+ --> tests/ui/fail/function_const_argument.rs:6:55
+  |
+6 |     let _ = pretty_name::of_function!(const_generic::<16>);
+  |                                                       ^^ no rules expected this token in macro call
+  |
+note: while trying to match meta-variable `$arg:ty`
+ --> src/lib.rs
+  |
+  |     ($ident:ident ::<$($arg:ty),+ $(,)?>) => {{
+  |                        ^^^^^^^

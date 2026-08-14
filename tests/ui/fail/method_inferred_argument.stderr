@@ -1,0 +1,5 @@
+error[E0282]: type annotations needed
+  --> tests/ui/fail/method_inferred_argument.rs:11:54
+   |
+11 |     let _ = pretty_name::of_method!(Owner::generic::<_>);
+   |                                                      ^ cannot infer type

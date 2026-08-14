@@ -1,0 +1,7 @@
+error: angle-qualified owners are unsupported; use `Type::<Args>::method`
+  --> tests/ui/fail/angle_qualified_method_owner.rs:10:13
+   |
+10 |     let _ = pretty_name::of_method!(<Owner<u32>>::method);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this error originates in the macro `pretty_name::of_method` (in Nightly builds, run with -Z macro-backtrace for more info)

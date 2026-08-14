@@ -1,0 +1,5 @@
+error[E0425]: cannot find value `missing_function` in this scope
+ --> tests/ui/fail/missing_function.rs:3:39
+  |
+3 |     let _ = pretty_name::of_function!(missing_function);
+  |                                       ^^^^^^^^^^^^^^^^ not found in this scope

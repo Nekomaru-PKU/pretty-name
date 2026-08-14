@@ -55,7 +55,22 @@ mod fixtures {
         }
     }
 
-    /// A generic owner used to verify qualified macro forms.
+    /// A trait used to verify methods resolve through bounded owner parameters.
+    pub trait Named {
+        /// A trait-provided method referenced through its implementing type.
+        fn trait_method(&self);
+    }
+
+    impl Named for PlainOwner {
+        fn trait_method(&self) {}
+    }
+
+    /// Gets a trait-provided method name through a resolved bounded owner parameter.
+    pub fn trait_method_name<T: Named>() -> pretty_name::MemberName {
+        pretty_name::of_method!(T::trait_method)
+    }
+
+    /// A generic owner used to verify named-path macro forms.
     pub struct GenericOwner<T> {
         /// A field referenced by qualified field-name macros.
         pub value: T,
@@ -129,6 +144,7 @@ use fixtures::{
     generic_pair,
     generic_type_name,
     plain_function,
+    trait_method_name,
 };
 
 /// Builds owned expected names for tuple-based macro cases.
@@ -243,7 +259,7 @@ fn field_macro_shortens_qualified_generic_owner() {
     assert_eq!(
         (
             pretty_name::of_field!(
-                <fixtures::GenericOwner<u32>>::value).to_string(),
+                fixtures::GenericOwner::<u32>::value).to_string(),
             owner.value),
         ("<GenericOwner<u32>>::value".to_owned(), 42));
 }
@@ -298,9 +314,9 @@ fn method_macro_shortens_qualified_owner_and_generic_arguments() {
     assert_eq!(
         (
             pretty_name::of_method!(
-                <fixtures::GenericOwner<u32>>::method).to_string(),
+                fixtures::GenericOwner::<u32>::method).to_string(),
             pretty_name::of_method!(
-                <fixtures::GenericOwner<u32>>::generic_method::<
+                fixtures::GenericOwner::<u32>::generic_method::<
                     std::string::String>).to_string()),
         names!(
             "<GenericOwner<u32>>::method",
@@ -316,6 +332,14 @@ fn method_macro_resolves_an_owner_alias() {
     assert_eq!(
         pretty_name::of_method!(OwnerAlias::method).to_string(),
         "<PlainOwner>::method");
+}
+
+/// Verifies trait methods use the concrete bounded owner rather than a trait declaration.
+#[test]
+fn method_macro_resolves_a_bounded_owner_parameter() {
+    assert_eq!(
+        trait_method_name::<PlainOwner>().to_string(),
+        "<PlainOwner>::trait_method");
 }
 
 /// Verifies both non-generic and generic `Self` method forms resolve their owner.
@@ -379,7 +403,7 @@ fn variant_macro_supports_stable_generic_variant_forms() {
 
     let unit_name = match GenericEnum::<u32>::Unit {
         GenericEnum::Unit => {
-            pretty_name::of_variant!(<fixtures::GenericEnum<u32>>::Unit)
+            pretty_name::of_variant!(fixtures::GenericEnum::<u32>::Unit)
         }
         _ => unreachable!(),
     };

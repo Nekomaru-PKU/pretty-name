@@ -1,0 +1,11 @@
+error: no rules expected `..`
+ --> tests/ui/fail/function_placeholder.rs:6:49
+  |
+6 |     let _ = pretty_name::of_function!(generic::<..>);
+  |                                                 ^^ no rules expected this token in macro call
+  |
+note: while trying to match meta-variable `$arg:ty`
+ --> src/lib.rs
+  |
+  |     ($ident:ident ::<$($arg:ty),+ $(,)?>) => {{
+  |                        ^^^^^^^

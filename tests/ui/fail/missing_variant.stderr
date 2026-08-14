@@ -1,0 +1,8 @@
+error[E0599]: no variant, associated function, or constant named `Missing` found for enum `Choice` in the current scope
+ --> tests/ui/fail/missing_variant.rs:9:46
+  |
+2 | enum Choice {
+  | ----------- variant, associated function, or constant `Missing` not found for this enum
+...
+9 |     let _ = pretty_name::of_variant!(Choice::Missing);
+  |                                              ^^^^^^^ variant, associated function, or constant not found in `Choice`

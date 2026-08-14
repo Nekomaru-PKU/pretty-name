@@ -148,6 +148,19 @@ stringify!(ident) plus TypeName construction
 
 No macro arm may weaken validation merely to accept more inputs. If rustc cannot form the referenced item with the supported explicit syntax, `pretty-name` does not claim to name it.
 
+Fields, methods, and variants accept named owner paths written with ordinary Rust path syntax:
+
+```rust
+of_field!(Type::field)
+of_method!(module::Type::method)
+of_method!(Type::<OwnerArgs>::method::<MethodArgs>)
+of_variant!(Enum::<Args>::Variant)
+```
+
+`Self`, aliases, and bounded type parameters are supported owner paths. Extra angle-qualified owners, qualified-self owners, and anonymous owner types are not supported; this excludes `<Type<Args>>::member`, `<T as Trait>::member`, and `<&T>::member`. Trait-provided methods are named through their concrete implementor or a bounded type parameter such as `T::method`, because a bare trait declaration is not a resolved owner type.
+
+An implementation-only `macro_rules!` token partitioner separates the final member from the named owner path. It recognizes separators and balances owner turbofish tokens without deriving semantic information. Rustc then reparses the preserved owner in a type position and validates the emitted field access, method item, or variant pattern. This macro-input partitioning is distinct from the prohibited heuristic parsing of compiler-generated type descriptions.
+
 ### Generic functions and methods
 
 M1 supports function and method generic arguments only when every required, caller-specifiable generic argument is a type and is written explicitly.
@@ -265,6 +278,7 @@ Tasks:
 - Rebuild every macro so validation uses real Rust syntax before capturing a source identifier.
 - Apply one explicit-type-argument rule to functions and associated methods.
 - Resolve all owner and argument types through `TypeName`.
+- Accept only named member-owner paths written with ordinary path and turbofish syntax.
 - Preserve IDE completion where possible without weakening validation.
 - Reject placeholders, inferred arguments, direct const generic arguments, and wrong item shapes with compile-time errors.
 
