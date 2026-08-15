@@ -1,0 +1,9 @@
+/// An owner used to verify malformed field suffixes reach the splitter fallback.
+struct Owner {
+    /// A field whose call-like suffix is deliberately invalid.
+    field: u32,
+}
+
+fn main() {
+    let _ = pretty_name::of_field!(Owner::field());
+}

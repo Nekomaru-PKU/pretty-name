@@ -1,0 +1,9 @@
+/// An enum used to verify malformed variant suffixes reach the splitter fallback.
+enum Choice {
+    /// A unit variant whose call-like suffix is deliberately invalid.
+    Unit,
+}
+
+fn main() {
+    let _ = pretty_name::of_variant!(Choice::Unit());
+}

@@ -1,0 +1,7 @@
+error: expected a named owner path followed by a supported variant shape
+ --> tests/ui/fail/malformed_variant_path.rs:8:13
+  |
+8 |     let _ = pretty_name::of_variant!(Choice::Unit());
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the macro `$crate::__split_member_owner` which comes from the expansion of the macro `pretty_name::of_variant` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -1,0 +1,7 @@
+error: expected a named owner path followed by `::field`
+ --> tests/ui/fail/malformed_field_path.rs:8:13
+  |
+8 |     let _ = pretty_name::of_field!(Owner::field());
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the macro `$crate::__split_member_owner` which comes from the expansion of the macro `pretty_name::of_field` (in Nightly builds, run with -Z macro-backtrace for more info)
