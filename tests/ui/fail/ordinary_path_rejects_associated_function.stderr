@@ -1,0 +1,5 @@
+error[E0432]: unresolved import `Owner`
+  --> tests/ui/fail/ordinary_path_rejects_associated_function.rs:11:34
+   |
+11 |     let _ = pretty_name::nameof!(Owner::function);
+   |                                  ^^^^^ `Owner` is a struct, not a module

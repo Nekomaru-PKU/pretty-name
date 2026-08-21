@@ -13,10 +13,12 @@ impl fmt::Write for RefusingWriter {
     fn write_str(&mut self, _value: &str) -> fmt::Result { Err(fmt::Error) }
 }
 
-/// Verifies item values preserve validated source spelling.
+/// Verifies item values preserve a complete validated lexical source path.
 #[test]
-fn identifier_display_preserves_source_spelling() {
-    assert_eq!(__item_name(None, "local_value", Box::new([])).to_string(), "local_value");
+fn item_display_preserves_lexical_source_path() {
+    assert_eq!(
+        __item_name(None, "module::local_value", Box::new([])).to_string(),
+        "module::local_value");
 }
 
 /// Verifies functions without arguments omit generic punctuation.

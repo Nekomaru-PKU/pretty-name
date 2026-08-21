@@ -7,5 +7,5 @@ error[E0615]: attempted to take value of method `item` on type `Owner`
 help: use parentheses to call the method
   --> src/lib.rs
    |
-   |         let _ = |obj: $owner| { let _ = &obj.$field(); };
-   |                                                    ++
+   |             let _ = |obj: $owner| { let _ = &obj.$field(); };
+   |                                                        ++

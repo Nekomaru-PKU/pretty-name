@@ -4,4 +4,4 @@ error: expected an ordinary value path, optionally followed by explicit type arg
 6 |     let _ = pretty_name::nameof!(generic::<..>);
   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   |
-  = note: this error originates in the macro `$crate::nameof` which comes from the expansion of the macro `pretty_name::nameof` (in Nightly builds, run with -Z macro-backtrace for more info)
+  = note: this error originates in the macro `pretty_name::nameof` (in Nightly builds, run with -Z macro-backtrace for more info)

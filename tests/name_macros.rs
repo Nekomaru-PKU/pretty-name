@@ -14,12 +14,12 @@ mod fixtures {
     pub fn generic_pair<T, U>() {}
 
     /// Gets the name of [`generic_function`] for the caller's concrete type.
-    pub fn generic_function_name<T>() -> pretty_name::PrettyName {
+    pub fn generic_function_name<T>() -> impl std::fmt::Display {
         pretty_name::nameof!(generic_function::<T>)
     }
 
     /// Gets the resolved name of a possibly unsized generic type parameter.
-    pub fn generic_type_name<T: ?Sized>() -> pretty_name::PrettyName {
+    pub fn generic_type_name<T: ?Sized>() -> impl std::fmt::Display {
         pretty_name::nameof_type!(T)
     }
 
@@ -40,22 +40,22 @@ mod fixtures {
         pub fn generic_method<T>(&self) {}
 
         /// Gets this owner's type name through `Self`.
-        pub fn self_type_name() -> pretty_name::PrettyName {
+        pub fn self_type_name() -> impl std::fmt::Display {
             pretty_name::nameof_type!(Self)
         }
 
         /// Gets this owner's field name through `Self`.
-        pub fn self_field_name() -> pretty_name::PrettyName {
+        pub fn self_field_name() -> impl std::fmt::Display {
             pretty_name::nameof_field!(Self::field)
         }
 
         /// Gets this owner's method name through `Self`.
-        pub fn self_method_name() -> pretty_name::PrettyName {
+        pub fn self_method_name() -> impl std::fmt::Display {
             pretty_name::nameof_member!(Self::method)
         }
 
         /// Gets this owner's generic method name through `Self`.
-        pub fn self_generic_method_name<T>() -> pretty_name::PrettyName {
+        pub fn self_generic_method_name<T>() -> impl std::fmt::Display {
             pretty_name::nameof_member!(Self::generic_method::<T>)
         }
     }
@@ -71,7 +71,7 @@ mod fixtures {
     }
 
     /// Gets a trait-provided method name through a resolved bounded owner parameter.
-    pub fn trait_method_name<T: Named>() -> pretty_name::PrettyName {
+    pub fn trait_method_name<T: Named>() -> impl std::fmt::Display {
         pretty_name::nameof_member!(T::trait_method)
     }
 
@@ -95,7 +95,7 @@ mod fixtures {
         pub fn generic_method<U>(&self) {}
 
         /// Gets the method name for this concrete `Self` type.
-        pub fn self_method_name() -> pretty_name::PrettyName {
+        pub fn self_method_name() -> impl std::fmt::Display {
             pretty_name::nameof_member!(Self::method)
         }
     }
@@ -118,12 +118,12 @@ mod fixtures {
 
     impl<T> GenericEnum<T> {
         /// Gets the unit variant name through `Self`.
-        pub fn self_unit_name() -> pretty_name::PrettyName {
+        pub fn self_unit_name() -> impl std::fmt::Display {
             pretty_name::nameof_member!(Self::Unit)
         }
 
         /// Gets the tuple-constructor variant name through `Self`.
-        pub fn self_tuple_name() -> pretty_name::PrettyName {
+        pub fn self_tuple_name() -> impl std::fmt::Display {
             pretty_name::nameof_member!(Self::Tuple)
         }
     }
@@ -205,29 +205,49 @@ fn function_macro_formats_explicit_generic_arguments() {
         "generic_pair<Vec<u8>, String>");
 }
 
-/// Verifies module qualification validates the complete path but is not displayed.
+/// Verifies module qualification is validated and retained lexically.
 #[test]
 fn function_macro_accepts_a_module_qualified_function() {
     assert_eq!(
         pretty_name::nameof!(fixtures::plain_function).to_string(),
-        "plain_function");
+        "fixtures::plain_function");
 }
 
-/// Verifies a qualified generic function retains only its final source identifier.
+/// Verifies a qualified generic function retains its path and resolves type arguments.
 #[test]
 fn function_macro_accepts_a_module_qualified_generic_function() {
     assert_eq!(
         pretty_name::nameof!(
             fixtures::generic_pair::<std::vec::Vec<u8>, String>).to_string(),
-        "generic_pair<Vec<u8>, String>");
+        "fixtures::generic_pair<Vec<u8>, String>");
 }
 
-/// Verifies an absolute function path is scanned forward to its final identifier.
+/// Verifies an absolute function path retains its leading root marker.
 #[test]
 fn function_macro_accepts_an_absolute_generic_function_path() {
     assert_eq!(
         pretty_name::nameof!(::std::mem::drop::<u32>).to_string(),
-        "drop<u32>");
+        "::std::mem::drop<u32>");
+}
+
+/// Verifies a renamed module stays lexical while generic arguments stay resolved.
+#[test]
+fn function_macro_preserves_a_renamed_module_path() {
+    use fixtures as renamed_fixtures;
+
+    assert_eq!(
+        pretty_name::nameof!(renamed_fixtures::generic_function::<String>).to_string(),
+        "renamed_fixtures::generic_function<String>");
+}
+
+/// Verifies meaningful module paths distinguish otherwise identical function names.
+#[test]
+fn function_macro_distinguishes_standard_functions_by_module_path() {
+    assert_eq!(
+        (
+            pretty_name::nameof!(std::array::from_mut::<u8>).to_string(),
+            pretty_name::nameof!(std::slice::from_mut::<u8>).to_string()),
+        names!("std::array::from_mut<u8>", "std::slice::from_mut<u8>"));
 }
 
 /// Verifies associated constants use the member owner's display form.

@@ -8,5 +8,5 @@ error[E0533]: expected value, found struct variant `Choice::Struct`
 help: you might have meant to create a new value of the struct
   --> src/lib.rs
    |
-   |         let _ = || <$owner>::$member { value: /* value */ };
-   |                                      ++++++++++++++++++++++
+   |             let _ = || <$owner>::$member { value: /* value */ };
+   |                                          ++++++++++++++++++++++

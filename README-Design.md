@@ -22,37 +22,41 @@ one of two sources:
 
 1. A **resolved type** is the compiler description returned by `core::any::type_name` or
    `core::any::type_name_of_val`.
-2. A **source identifier** is the identifier written at a macro call. It is captured with
-   `stringify!` only alongside ordinary Rust syntax that verifies the referenced item.
+2. A **source path** is the identifier path written at a macro call. It is captured from
+   identifier tokens only alongside ordinary Rust syntax that verifies the referenced item.
 
 These sources are deliberately different. Rust exposes resolved type descriptions, but it
 does not expose stable reflection for the declared names of values, functions, fields,
-methods, or variants. A type alias is consequently transparent, while a renamed value import
-retains the identifier written at the call site.
+methods, or variants. A type alias is consequently transparent, while renamed value and
+module imports retain the lexical spelling written at the call site.
 
 Names are diagnostic presentation rather than unique or stable identities. They must not be
 used as serialization keys.
 
 ## Public value model
 
-Every operation returns one opaque `PrettyName`. A single result type keeps generic code and
-glob imports simple while the private representation preserves the semantic difference
-between a resolved type and a composed item name.
+Every operation returns `impl Display`, and the concrete `PrettyName` type is private. The four
+macros call one hidden construction bridge and therefore share one opaque result type. Public
+functions use the same trait contract without promising concrete-type identity across
+different functions.
 
 The private representation has two cases:
 
 1. A type stores one compiler-resolved type description.
-2. An item stores an optional resolved owner type, one compiler-validated source identifier,
-   and zero or more resolved generic argument types.
+2. An item stores an optional resolved owner type, one compiler-validated lexical source
+   path, and zero or more resolved generic argument types.
 
-`PrettyName` implements `Display` and formats its semantic components on demand. It implements
-`Debug` explicitly as `PrettyName(<display output>)`, which exposes no private representation
-details. The private representation intentionally does not implement `Debug`.
+`PrettyName` implements `Display` and formats its semantic components on demand. It does not
+implement `Debug`; callers receive no public promise beyond `Display`. A caller can keep an
+inferred local value, accept or return it through `impl Display`, or explicitly materialize a
+`String` with `ToString`.
 
-Fields remain private. Documented functions and macros are the supported construction
-interface. Public `#[doc(hidden)]` functions exist only because exported macros must construct
-values across a downstream crate's privacy boundary; they are not supported constructors or
-extension points.
+The type and its fields remain private. Documented functions and macros are the supported
+construction interface. One public `#[doc(hidden)]` bridge accepts only public representation
+data, constructs `PrettyName` inside the crate, and returns `impl Display`; exported macros
+need that bridge to cross a downstream crate's privacy boundary. Other hidden helpers expose
+compiler type descriptions to macro expansion. None are supported constructors or extension
+points.
 
 ## Information sources
 
@@ -61,10 +65,10 @@ The functions use only resolved type information:
 1. `type_name::<T>()` and `nameof_type!(T)` store the compiler description of `T`.
 2. `type_name_of_val(&value)` stores the compiler description of the value's type.
 
-The macros for values and members combine source identifiers with resolved types:
+The macros for values and members combine source paths or identifiers with resolved types:
 
-1. `nameof!(path)` stores the final source identifier. Explicit generic arguments are stored
-   as resolved types.
+1. `nameof!(path)` stores the complete lexical source path, including module aliases and a
+   leading `::`. Explicit generic arguments are stored as resolved types.
 2. `nameof_member!(Owner::member)` additionally stores the resolved owner type.
 3. `nameof_field!(Owner::field)` stores the resolved owner type and field identifier.
 
@@ -104,6 +108,8 @@ Composed names use this grammar:
 ```text
 identifier
 identifier<Arg1, Arg2>
+module::function
+::module::function<Arg1, Arg2>
 Owner::member
 Owner<OwnerArg>::member<MemberArg>
 ```
@@ -114,8 +120,8 @@ produced by `core::any::type_name_of_val`:
 
 ```text
 crate::model::Owner<crate::model::Record>  ->  Owner<Record>
-function::<crate::model::Record>           ->  function<Record>
-Owner<Record> + method::<String>            ->  Owner<Record>::method<String>
+module::function::<crate::model::Record>   ->  module::function<Record>
+Owner<Record> + method::<String>           ->  Owner<Record>::method<String>
 ```
 
 Different resolved types can shorten to the same displayed name. This ambiguity is acceptable
@@ -127,12 +133,19 @@ Each macro separates compiler validation from name construction:
 
 1. Ordinary Rust syntax resolves and type-checks the referenced path, owner, field, and
    explicit arguments inside an uncalled closure.
-2. `stringify!` captures the final validated source identifier.
+2. Identifier repetition captures a lexical value path, while individual `stringify!`
+   results and `concat!` preserve Rust path punctuation without formatter whitespace.
 3. Compiler type descriptions capture the resolved owner and generic type arguments.
 
 No supported macro arm accepts an identifier without the corresponding compiler check.
 Misspelled items, invalid owners, incomplete generic arguments, and incorrect fields therefore
 fail during compilation.
+
+Every concrete macro expansion places validation and construction inside an
+`#[allow(warnings)]` block. Generated validation therefore does not inherit a downstream
+warning policy or fail merely because it references a deprecated item under
+`deny(warnings)`. The block does not suppress syntax, name-resolution, privacy, or type errors;
+command-line force-warn policy also remains authoritative.
 
 ### Four resolution modes
 
@@ -140,13 +153,15 @@ fail during compilation.
 
 `nameof!` treats its input as an ordinary value path. It supports bindings, constants,
 statics, and free functions, optionally through module segments and with explicit generic type
-arguments. Only the final source identifier is displayed.
+arguments. Every lexical module segment and an optional leading `::` are displayed. Explicit
+generic arguments are resolved and shortened as types rather than preserved lexically.
 
-Rust's expression namespace also allows some inputs whose spelling suggests a type boundary.
-For example, `nameof!(Type::function)`, `nameof!(Enum::Unit)`, and
-`nameof!(Enum::Tuple)` may compile. They are intentionally classified as unexpected usage:
-`nameof!` treats the leading identifiers as ordinary path segments and consequently omits the
-owner. Supported associated-item and variant spelling uses `nameof_member!`.
+Qualified ordinary paths receive an additional `use path as _` check. This establishes that
+the leading segments form an importable path and rejects type-associated spelling such as
+`nameof!(Type::function)`, keeping that syntax with `nameof_member!`. Rust permits importing
+unit and tuple variants through an enum namespace, so `nameof!(Enum::Unit)` and
+`nameof!(Enum::Tuple)` can remain accepted as unexpected usage. Supported variant spelling
+uses `nameof_member!` and displays a compiler-resolved owner.
 
 `nameof_member!` treats its first non-`<` owner path as a resolved type. Its member umbrella
 includes associated constants, associated functions, methods, unit variants, and tuple-variant
@@ -230,11 +245,15 @@ explicit documentation both here and on the relevant public API.
 
 ## Ownership, safety, and cost model
 
-Resolved compiler descriptions and source identifiers have `'static` lifetimes. The private
+Resolved compiler descriptions and source paths have `'static` lifetimes. The private
 item representation owns its variable-length generic argument list as `Box<[&'static str]>`.
 This direct representation avoids one allocation and one pointer indirection compared with
-boxing the entire private enum while keeping `PrettyName` lifetime-independent and
+boxing the entire private enum while keeping each returned name lifetime-independent and
 arity-independent.
+
+`type_name_of_val` uses precise return-type capture to exclude the borrow lifetime from its
+opaque result. The name can therefore outlive the value used to discover its type without
+storing or extending that reference.
 
 The implementation follows these constraints:
 
@@ -269,8 +288,8 @@ measurements, but they do not justify a weaker parser or partial transformation.
 
 The public API stays focused on readable diagnostic presentation:
 
-1. `PrettyName` does not expose raw strings, semantic components, string comparison, or
-   construction from arbitrary strings.
+1. The opaque name API does not expose `PrettyName`, raw strings, semantic components, string
+   comparison, or construction from arbitrary strings.
 2. The crate does not define a public name trait because `Display` and `ToString` cover the
    shared behavior.
 3. Display qualification is fixed; callers cannot treat shortened output as a unique identity.

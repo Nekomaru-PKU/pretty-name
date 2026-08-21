@@ -1,4 +1,4 @@
-/// A trait whose declaration cannot serve as a resolved `PrettyName` owner.
+/// A trait whose declaration cannot serve as a resolved member-name owner.
 trait Named {
     /// A method that can instead be named through an implementor or bounded parameter.
     fn method(&self);

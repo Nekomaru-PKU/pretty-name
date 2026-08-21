@@ -9,44 +9,25 @@ use quote::quote;
 use syn::*;
 use syn::visit_mut::VisitMut;
 
-/// A compiler-validated diagnostic name with human-readable [`Display`](fmt::Display)
-/// formatting.
+/// The private representation behind the crate's opaque [`Display`](fmt::Display)
+/// values.
 ///
 /// A name contains either one compiler-resolved type description or a validated source
-/// identifier with an optional resolved owner and explicit generic type arguments. Its
-/// representation remains private because displayed names are diagnostic presentation,
-/// not stable identities or reflection data.
-///
-/// # Examples
-///
-/// ```rust
-/// use pretty_name::{PrettyName, nameof, nameof_member, nameof_type};
-///
-/// struct Owner;
-/// impl Owner { fn function<T>() {} }
-/// let local_value = 42;
-///
-/// let value: PrettyName = nameof!(local_value);
-/// let member: PrettyName = nameof_member!(Owner::function::<u32>);
-/// let ty: PrettyName = nameof_type!(std::collections::HashMap<String, i32>);
-///
-/// assert_eq!(value.to_string(), "local_value");
-/// assert_eq!(member.to_string(), "Owner::function<u32>");
-/// assert_eq!(ty.to_string(), "HashMap<String, i32>");
-/// assert!(format!("{member:?}").starts_with("PrettyName("));
-/// ```
-pub struct PrettyName(PrettyNameRepresentation);
+/// path with an optional resolved owner and explicit generic type arguments. Keeping
+/// the type private prevents diagnostic presentation from becoming an identity or
+/// reflection API by accident.
+struct PrettyName(PrettyNameRepresentation);
 
 /// The private semantic components used to format one [`PrettyName`].
 enum PrettyNameRepresentation {
     /// One complete compiler-resolved type description.
     Type(&'static str),
-    /// A validated identifier and its optional resolved type owner and arguments.
+    /// A validated source path and its optional resolved type owner and arguments.
     Item {
         /// The compiler-resolved owner of a member or field.
         owner: Option<&'static str>,
-        /// The source identifier captured after compiler validation.
-        ident: &'static str,
+        /// The lexical source path captured after compiler validation.
+        source_path: &'static str,
         /// Compiler-resolved generic type arguments in source order.
         args: Box<[&'static str]>,
     },
@@ -55,16 +36,8 @@ enum PrettyNameRepresentation {
 impl PrettyName {
     /// Constructs an arbitrary resolved-type representation for focused formatter tests.
     #[cfg(test)]
-    pub fn from_type_description(description: &'static str) -> Self {
+    fn from_type_description(description: &'static str) -> Self {
         PrettyName(PrettyNameRepresentation::Type(description))
-    }
-}
-
-impl fmt::Debug for PrettyName {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("PrettyName(")?;
-        fmt::Display::fmt(self, formatter)?;
-        formatter.write_str(")")
     }
 }
 
@@ -74,12 +47,16 @@ impl fmt::Display for PrettyName {
             PrettyNameRepresentation::Type(description) => {
                 write_type_description(description, formatter)
             }
-            PrettyNameRepresentation::Item { owner, ident, args } => {
+            PrettyNameRepresentation::Item {
+                owner,
+                source_path,
+                args,
+            } => {
                 if let Some(owner) = owner {
                     write_type_description(owner, formatter)?;
                     formatter.write_str("::")?;
                 }
-                formatter.write_str(ident)?;
+                formatter.write_str(source_path)?;
                 write_generic_arguments(args, formatter)
             }
         }
@@ -90,7 +67,8 @@ impl fmt::Display for PrettyName {
 ///
 /// Formatting removes module qualification from parseable Rust type paths while
 /// preserving the remaining type structure. Compiler descriptions outside the
-/// supported grammar are displayed unchanged.
+/// supported grammar are displayed unchanged. The return type intentionally exposes
+/// only [`Display`](fmt::Display).
 ///
 /// # Examples
 ///
@@ -101,14 +79,16 @@ impl fmt::Display for PrettyName {
 /// assert_eq!(type_name::<Option<i32>>().to_string(), "Option<i32>");
 /// assert_eq!(type_name::<Vec<Box<dyn std::fmt::Debug>>>().to_string(), "Vec<Box<dyn Debug>>");
 /// ```
-pub fn type_name<T: ?Sized>() -> PrettyName {
+pub fn type_name<T: ?Sized>() -> impl fmt::Display + use<T> {
     PrettyName(PrettyNameRepresentation::Type(any::type_name::<T>()))
 }
 
 /// Gets a diagnostic name for the compiler-resolved type of `value`.
 ///
 /// Passing a reference inspects the referenced value's type rather than adding another
-/// reference layer to the description.
+/// reference layer to the description. The returned name does not retain the borrow and
+/// may outlive `value`; its opaque type intentionally exposes only
+/// [`Display`](fmt::Display).
 ///
 /// # Examples
 ///
@@ -119,15 +99,22 @@ pub fn type_name<T: ?Sized>() -> PrettyName {
 /// assert_eq!(type_name_of_val(&value).to_string(), "Vec<i32>");
 /// assert_eq!(type_name_of_val(&value.as_slice()).to_string(), "&[i32]");
 /// ```
-pub fn type_name_of_val<T: ?Sized>(value: &T) -> PrettyName {
+#[expect(
+    clippy::needless_lifetimes,
+    reason = "the named input lifetime makes its exclusion from `use<T>` explicit")]
+pub fn type_name_of_val<'value, T: ?Sized>(
+    value: &'value T) -> impl fmt::Display + use<T> {
     PrettyName(PrettyNameRepresentation::Type(any::type_name_of_val(value)))
 }
 
-/// Gets the validated source identifier of an ordinary value path.
+/// Gets the validated lexical path of an ordinary value.
 ///
 /// The path may name a binding, constant, static, function, or other value-like item.
 /// Generic arguments must be explicit concrete types. The referenced value is resolved
-/// inside an uncalled closure and is therefore not evaluated.
+/// inside an uncalled closure and is therefore not evaluated. Qualified paths retain
+/// their source spelling, while explicit generic arguments use compiler-resolved type
+/// names. A qualified path must also be importable, which keeps associated items in the
+/// [`nameof_member!`](crate::nameof_member) macro's resolution mode.
 ///
 /// # Examples
 /// ```rust
@@ -139,7 +126,9 @@ pub fn type_name_of_val<T: ?Sized>(value: &T) -> PrettyName {
 /// assert_eq!(pretty_name::nameof!(my_variable).to_string(), "my_variable");
 /// assert_eq!(pretty_name::nameof!(MY_CONSTANT).to_string(), "MY_CONSTANT");
 /// assert_eq!(pretty_name::nameof!(my_function::<u32>).to_string(), "my_function<u32>");
-/// assert_eq!(pretty_name::nameof!(nested::function).to_string(), "function");
+/// assert_eq!(
+///     pretty_name::nameof!(nested::function).to_string(),
+///     "nested::function");
 /// ```
 ///
 /// Missing values are rejected at compile time:
@@ -149,47 +138,88 @@ pub fn type_name_of_val<T: ?Sized>(value: &T) -> PrettyName {
 /// ```
 #[macro_export]
 macro_rules! nameof {
-    (@__qualified [$($prefix:tt)*] $ident:ident) => {{
-        let _ = || { let _ = &$($prefix)*$ident; };
-        $crate::__item_name(
-            ::core::option::Option::None,
-            stringify!($ident),
-            ::std::boxed::Box::new([]))
-    }};
-    (@__qualified [$($prefix:tt)*] $ident:ident ::<$($arg:ty),+ $(,)?>) => {{
-        let _ = || { let _ = &$($prefix)*$ident::<$($arg),*>; };
-        $crate::__item_name(
-            ::core::option::Option::None,
-            stringify!($ident),
-            ::std::boxed::Box::new([$($crate::__resolved_type_name::<$arg>()),*]))
-    }};
-    (@__qualified [$($prefix:tt)*] $segment:ident :: $($rest:tt)+) => {
-        $crate::nameof!(@__qualified [$($prefix)* $segment ::] $($rest)+)
-    };
-    (@__qualified [$($prefix:tt)*] $($invalid:tt)*) => {
-        compile_error!(
-            "expected an ordinary value path, optionally followed by explicit type arguments")
-    };
     ($ident:ident) => {{
-        let _ = || { let _ = &$ident; };
-        $crate::__item_name(
-            ::core::option::Option::None,
-            stringify!($ident),
-            ::std::boxed::Box::new([]))
+        #[allow(
+            warnings,
+            reason = "macro-generated validation must not inherit downstream warning policy")]
+        {
+            let _ = || { let _ = &$ident; };
+            $crate::__make_name(
+                ::core::option::Option::None,
+                ::core::option::Option::None,
+                stringify!($ident),
+                ::std::boxed::Box::new([]))
+        }
     }};
     ($ident:ident ::<$($arg:ty),+ $(,)?>) => {{
-        let _ = || { let _ = &$ident::<$($arg),*>; };
-        $crate::__item_name(
-            ::core::option::Option::None,
-            stringify!($ident),
-            ::std::boxed::Box::new([$($crate::__resolved_type_name::<$arg>()),*]))
+        #[allow(
+            warnings,
+            reason = "macro-generated validation must not inherit downstream warning policy")]
+        {
+            let _ = || { let _ = &$ident::<$($arg),*>; };
+            $crate::__make_name(
+                ::core::option::Option::None,
+                ::core::option::Option::None,
+                stringify!($ident),
+                ::std::boxed::Box::new([$($crate::__resolved_type_name::<$arg>()),*]))
+        }
     }};
-    ($head:ident :: $($rest:tt)+) => {
-        $crate::nameof!(@__qualified [$head ::] $($rest)+)
-    };
-    (:: $head:ident $($rest:tt)*) => {
-        $crate::nameof!(@__qualified [::] $head $($rest)*)
-    };
+    ($head:ident :: $($tail:ident)::+ ::<$($arg:ty),+ $(,)?>) => {{
+        #[allow(
+            warnings,
+            reason = "macro-generated validation must not inherit downstream warning policy")]
+        {
+            use $head::$($tail)::+ as _;
+            let _ = || { let _ = &$head::$($tail)::+::<$($arg),*>; };
+            $crate::__make_name(
+                ::core::option::Option::None,
+                ::core::option::Option::None,
+                concat!(stringify!($head), $("::", stringify!($tail)),+),
+                ::std::boxed::Box::new([$($crate::__resolved_type_name::<$arg>()),*]))
+        }
+    }};
+    (:: $head:ident :: $($tail:ident)::+ ::<$($arg:ty),+ $(,)?>) => {{
+        #[allow(
+            warnings,
+            reason = "macro-generated validation must not inherit downstream warning policy")]
+        {
+            use ::$head::$($tail)::+ as _;
+            let _ = || { let _ = &::$head::$($tail)::+::<$($arg),*>; };
+            $crate::__make_name(
+                ::core::option::Option::None,
+                ::core::option::Option::None,
+                concat!("::", stringify!($head), $("::", stringify!($tail)),+),
+                ::std::boxed::Box::new([$($crate::__resolved_type_name::<$arg>()),*]))
+        }
+    }};
+    ($head:ident :: $($tail:ident)::+) => {{
+        #[allow(
+            warnings,
+            reason = "macro-generated validation must not inherit downstream warning policy")]
+        {
+            use $head::$($tail)::+ as _;
+            let _ = || { let _ = &$head::$($tail)::+; };
+            $crate::__make_name(
+                ::core::option::Option::None,
+                ::core::option::Option::None,
+                concat!(stringify!($head), $("::", stringify!($tail)),+),
+                ::std::boxed::Box::new([]))
+        }
+    }};
+    (:: $head:ident :: $($tail:ident)::+) => {{
+        #[allow(
+            warnings,
+            reason = "macro-generated validation must not inherit downstream warning policy")]
+        {
+            use ::$head::$($tail)::+ as _;
+            let _ = || { let _ = &::$head::$($tail)::+; };
+            $crate::__make_name(
+                ::core::option::Option::None,
+                ::core::option::Option::None,
+                concat!("::", stringify!($head), $("::", stringify!($tail)),+),
+                ::std::boxed::Box::new([]))
+        }
+    }};
     ($($invalid:tt)*) => {
         compile_error!(
             "expected an ordinary value path, optionally followed by explicit type arguments")
@@ -219,7 +249,16 @@ macro_rules! nameof {
 #[macro_export]
 macro_rules! nameof_type {
     ($ty:ty) => {{
-        $crate::type_name::<$ty>()
+        #[allow(
+            warnings,
+            reason = "macro-generated validation must not inherit downstream warning policy")]
+        {
+            $crate::__make_name(
+                ::core::option::Option::Some($crate::__resolved_type_name::<$ty>()),
+                ::core::option::Option::None,
+                "",
+                ::std::boxed::Box::new([]))
+        }
     }};
 }
 
@@ -259,11 +298,17 @@ macro_rules! nameof_field {
         $crate::nameof_field!(<$owner>::$field)
     };
     (<$owner:path> :: $field:ident) => {{
-        let _ = |obj: $owner| { let _ = &obj.$field; };
-        $crate::__item_name(
-            ::core::option::Option::Some($crate::__resolved_type_name::<$owner>()),
-            stringify!($field),
-            ::std::boxed::Box::new([]))
+        #[allow(
+            warnings,
+            reason = "macro-generated validation must not inherit downstream warning policy")]
+        {
+            let _ = |obj: $owner| { let _ = &obj.$field; };
+            $crate::__make_name(
+                ::core::option::Option::None,
+                ::core::option::Option::Some($crate::__resolved_type_name::<$owner>()),
+                stringify!($field),
+                ::std::boxed::Box::new([]))
+        }
     }};
     ($($invalid:tt)*) => {
         compile_error!(
@@ -326,18 +371,30 @@ macro_rules! nameof_member {
         $crate::nameof_member!(<$owner>::$member::<$($arg),*>)
     };
     (<$owner:path> :: $member:ident) => {{
-        let _ = || <$owner>::$member;
-        $crate::__item_name(
-            ::core::option::Option::Some($crate::__resolved_type_name::<$owner>()),
-            stringify!($member),
-            ::std::boxed::Box::new([]))
+        #[allow(
+            warnings,
+            reason = "macro-generated validation must not inherit downstream warning policy")]
+        {
+            let _ = || <$owner>::$member;
+            $crate::__make_name(
+                ::core::option::Option::None,
+                ::core::option::Option::Some($crate::__resolved_type_name::<$owner>()),
+                stringify!($member),
+                ::std::boxed::Box::new([]))
+        }
     }};
     (<$owner:path> :: $member:ident ::<$($arg:ty),+ $(,)?>) => {{
-        let _ = || <$owner>::$member::<$($arg),*>;
-        $crate::__item_name(
-            ::core::option::Option::Some($crate::__resolved_type_name::<$owner>()),
-            stringify!($member),
-            ::std::boxed::Box::new([$($crate::__resolved_type_name::<$arg>()),*]))
+        #[allow(
+            warnings,
+            reason = "macro-generated validation must not inherit downstream warning policy")]
+        {
+            let _ = || <$owner>::$member::<$($arg),*>;
+            $crate::__make_name(
+                ::core::option::Option::None,
+                ::core::option::Option::Some($crate::__resolved_type_name::<$owner>()),
+                stringify!($member),
+                ::std::boxed::Box::new([$($crate::__resolved_type_name::<$arg>()),*]))
+        }
     }};
     ($($invalid:tt)*) => {
         compile_error!(
@@ -351,16 +408,41 @@ pub fn __resolved_type_name<T: ?Sized>() -> &'static str {
     any::type_name::<T>()
 }
 
-/// Constructs a name after an exported macro has validated its source path.
+/// Constructs and erases a name after an exported macro validates its source input.
 ///
 /// This function is public only so exported macros can use it from downstream crates;
-/// it is not a supported construction API.
+/// it is not a supported construction API. A present `resolved_type` selects the type
+/// representation; otherwise `owner`, `source_path`, and `args` select the item
+/// representation. The latter inputs are deliberately ignored for a type name so
+/// malformed direct calls cannot corrupt formatting state.
 #[doc(hidden)]
-pub fn __item_name(
+pub fn __make_name(
+    resolved_type: Option<&'static str>,
     owner: Option<&'static str>,
-    ident: &'static str,
+    source_path: &'static str,
+    args: Box<[&'static str]>) -> impl fmt::Display {
+    let representation = match resolved_type {
+        Some(description) => PrettyNameRepresentation::Type(description),
+        None => PrettyNameRepresentation::Item {
+            owner,
+            source_path,
+            args,
+        },
+    };
+    PrettyName(representation)
+}
+
+/// Constructs an item representation for focused formatter tests.
+#[cfg(test)]
+fn __item_name(
+    owner: Option<&'static str>,
+    source_path: &'static str,
     args: Box<[&'static str]>) -> PrettyName {
-    PrettyName(PrettyNameRepresentation::Item { owner, ident, args })
+    PrettyName(PrettyNameRepresentation::Item {
+        owner,
+        source_path,
+        args,
+    })
 }
 
 /// Writes one compiler-resolved type description through the structural formatter.

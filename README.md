@@ -8,7 +8,7 @@ Get the human-friendly name of types, functions, methods, fields, and enum varia
 
 ## Overview
 
-`pretty-name` provides macros and functions for extracting readable names of Rust language constructs. Every naming operation returns the same opaque `PrettyName` value, which implements `Display`. Unlike `stringify!` or `std::any::type_name`, this crate offers:
+`pretty-name` provides macros and functions for extracting readable names of Rust language constructs. Every naming operation returns an opaque value exposing only `Display`; the concrete representation is private. Unlike `stringify!` or `std::any::type_name`, this crate offers:
 
 ### Key Features
 
@@ -18,11 +18,11 @@ Get the human-friendly name of types, functions, methods, fields, and enum varia
 
 - **Full IDE auto-completion support**: Get all your IDE's auto-completion features even inside macros. No more guessing or manual typing.
 
-- **Semantic support for generics, qualified paths, and `Self`**: Resolves generic types and module-qualified names through the compiler, and resolves `Self` to the concrete type inside `impl` blocks.
+- **Semantic support for generics, qualified paths, and `Self`**: Preserves lexical module paths, resolves their generic types through the compiler, and resolves `Self` to the concrete type inside `impl` blocks.
 
 - **Catch typos at compile time**: Every referenced item is validated. Misspelled identifiers, fields, methods, or variants trigger compile errors instead of runtime failures.
 
-- **One opaque name value**: Every operation returns `PrettyName`, which retains its semantic components until formatting.
+- **A deliberately narrow value API**: Name values expose `Display` without exposing their concrete type, representation, or unrelated traits such as `Debug`.
 
 - **Natural, idiomatic syntax**: All syntax follows Rust conventions as closely as possible, making the macros feel like native language features.
 
@@ -45,11 +45,12 @@ cargo add pretty-name
 
 ## Usage
 
-Naming operations return [`PrettyName`](https://docs.rs/pretty-name/latest/pretty_name/struct.PrettyName.html),
-which can be formatted with `{}` or converted with the standard `.to_string()`.
+Naming operations return opaque `Display` values. They can be formatted with `{}`, passed
+through `impl Display` APIs, or explicitly materialized with `.to_string()`.
 
 ```rust
 use pretty_name::*;
+use std::fmt::Display;
 
 struct Owner<T> {
     field: T,
@@ -68,10 +69,15 @@ enum Choice<T> {
 
 fn generic_function<T>() {}
 
+fn forward_name(name: impl Display) -> impl Display { name }
+
 let local_value = 42;
 
 assert_eq!(nameof!(local_value).to_string(), "local_value");
 assert_eq!(nameof!(generic_function::<u32>).to_string(), "generic_function<u32>");
+assert_eq!(
+    forward_name(nameof!(std::array::from_mut::<u32>)).to_string(),
+    "std::array::from_mut<u32>");
 assert_eq!(nameof_member!(<Owner<u32>>::CONSTANT).to_string(), "Owner<u32>::CONSTANT");
 assert_eq!(
     nameof_member!(<Owner<u32>>::method::<String>).to_string(),
@@ -87,7 +93,8 @@ assert_eq!(type_name_of_val(&local_value).to_string(), "i32");
 The four macros use distinct resolution modes:
 
 1. `nameof!` names an ordinary value path, including bindings, constants, statics, and
-   free functions. Module qualification is accepted but omitted from display.
+   free functions. Module qualification, aliases, and a leading `::` are retained as a
+   lexical path; explicit type arguments use shortened compiler-resolved names.
 2. `nameof_member!` names a value-like member selected through a resolved owner type.
    Members include associated constants, associated functions, methods, and unit or
    tuple enum variants.
@@ -108,17 +115,22 @@ Additional behavior and boundaries:
 6. Generic values and members require every caller-provided generic argument to be
    written explicitly as a concrete type. Inferred arguments, direct const arguments,
    omitted arguments, and the legacy `::<..>` placeholder are unsupported.
-7. Every validation expression is placed in an uncalled closure. Naming does not invoke
+7. A qualified `nameof!` path must also be importable. This rejects type-associated paths
+   such as `Type::function`; use `nameof_member!` for associated items and variants.
+8. Every validation expression is placed in an uncalled closure. Naming does not invoke
    functions, access fields, evaluate members, construct variants, call `Deref`, or run
    destructors. Local-value validation may establish a temporary shared closure capture
    for borrow checking, but it invokes no user code.
-8. Constructing a name with generic arguments may allocate its argument slice.
-   Formatting a type may allocate while parsing and rendering it, and writes through
-   the caller-provided formatter.
-9. Type names are diagnostic presentation. Rust does not guarantee that compiler type
-   names are unique or stable between compiler versions, so they are unsuitable as
-   persistent identifiers or serialization keys.
-10. Compiler-generated names that are not valid Rust type syntax, such as some closure
+9. Macro-generated validation locally allows warnings so a downstream `deny(warnings)`
+   policy does not turn incidental validation warnings, including deprecation, into errors.
+   Syntax, resolution, and type errors remain compiler errors.
+10. Constructing a name with generic arguments may allocate its argument slice.
+    Formatting a type may allocate while parsing and rendering it, and writes through
+    the caller-provided formatter.
+11. Type names are diagnostic presentation. Rust does not guarantee that compiler type
+    names are unique or stable between compiler versions, so they are unsuitable as
+    persistent identifiers or serialization keys.
+12. Compiler-generated names that are not valid Rust type syntax, such as some closure
     descriptions, are returned unchanged rather than replaced with an error marker.
 
 ## License

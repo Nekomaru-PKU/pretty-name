@@ -1,4 +1,4 @@
-use pretty_name::{PrettyName, type_name, type_name_of_val};
+use pretty_name::{type_name, type_name_of_val};
 
 /// Formats a resolved type through the public value API.
 fn displayed_type_name<T: ?Sized>() -> String { type_name::<T>().to_string() }
@@ -323,22 +323,23 @@ fn long_types_are_extracted_across_pretty_printer_line_wrapping() {
         "unexpected formatted type: {name}");
 }
 
-/// Verifies the public function returns the opaque display value.
+/// Verifies the public function returns an inferred opaque display value.
 #[test]
-fn type_name_returns_pretty_name_value() {
-    let name: PrettyName = type_name::<std::num::NonZeroU8>();
+fn type_name_returns_an_opaque_display_value() {
+    let name = type_name::<std::num::NonZeroU8>();
 
     assert_eq!(name.to_string(), "NonZero<u8>");
 }
 
-/// Verifies the opaque value's debugging delegates to its display representation.
+/// Verifies value-based names do not capture the lifetime of their input borrow.
 #[test]
-fn type_name_debug_wraps_display_output() {
-    let debug = format!("{:?}", type_name::<std::num::NonZeroU8>());
+fn type_name_of_val_can_outlive_its_input_borrow() {
+    let name = {
+        let value = String::from("temporary value");
+        type_name_of_val(&value)
+    };
 
-    assert!(
-        debug.starts_with("PrettyName(") && debug.contains("NonZero"),
-        "unexpected debug representation: {debug}");
+    assert_eq!(name.to_string(), "String");
 }
 
 /// Verifies aliases are transparent to compiler-resolved type naming.
