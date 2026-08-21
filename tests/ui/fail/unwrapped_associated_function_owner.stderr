@@ -1,0 +1,7 @@
+error: expected a module-qualified function path with explicit type arguments, or an angle-wrapped associated owner
+  --> tests/ui/fail/unwrapped_associated_function_owner.rs:11:13
+   |
+11 |     let _ = pretty_name::of_function!(Owner::<u32>::create);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this error originates in the macro `$crate::__qualified_function_name` which comes from the expansion of the macro `pretty_name::of_function` (in Nightly builds, run with -Z macro-backtrace for more info)

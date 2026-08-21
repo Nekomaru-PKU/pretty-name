@@ -28,8 +28,8 @@ fn identifier_name_supports_display_to_string_and_debug() {
 fn function_name_supports_display_to_string_and_debug() {
     let name: FunctionName = pretty_name::of_function!(generic::<u32>);
 
-    assert_eq!(format!("{name}"), "generic::<u32>");
-    assert_eq!(name.to_string(), "generic::<u32>");
+    assert_eq!(format!("{name}"), "generic<u32>");
+    assert_eq!(name.to_string(), "generic<u32>");
     assert!(
         format!("{name:?}").starts_with("FunctionName {"),
         "the derived debug representation should identify its value type");

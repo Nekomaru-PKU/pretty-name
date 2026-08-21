@@ -1,0 +1,7 @@
+error: expected `Owner::Variant` or `<qualified::Owner<Args>>::Variant`
+  --> tests/ui/fail/unwrapped_qualified_variant_owner.rs:12:13
+   |
+12 |     let _ = pretty_name::of_variant!(nested::Choice::Unit);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this error originates in the macro `pretty_name::of_variant` (in Nightly builds, run with -Z macro-backtrace for more info)

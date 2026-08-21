@@ -1,7 +1,7 @@
 error: expected `Owner::Variant` or `<qualified::Owner<Args>>::Variant`
- --> tests/ui/fail/malformed_variant_path.rs:8:13
+ --> tests/ui/fail/legacy_tuple_variant_pattern.rs:9:13
   |
-8 |     let _ = pretty_name::of_variant!(Choice::Unit());
-  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+9 |     let _ = pretty_name::of_variant!(Choice::Tuple(..));
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   |
   = note: this error originates in the macro `pretty_name::of_variant` (in Nightly builds, run with -Z macro-backtrace for more info)

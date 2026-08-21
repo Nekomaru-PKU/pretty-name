@@ -34,27 +34,21 @@ mod nested {
         Unit,
         /// A tuple variant.
         Tuple(T),
-        /// A struct variant.
-        Struct {
-            /// A payload that makes the struct variant non-empty.
-            value: T,
-        },
     }
 }
 
 /// Exercises fields, methods, and variants with qualified generic owners.
 fn main() {
-    let _ = pretty_name::of_field!(nested::Owner::<u32>::field);
-    let _ = pretty_name::of_method!(nested::Owner::<u32>::method);
-    let _ = pretty_name::of_method!(nested::Owner::<u32>::generic::<String>);
-    let _ = pretty_name::of_variant!(nested::Choice::<u32>::Unit);
-    let _ = pretty_name::of_variant!(nested::Choice::<u32>::Tuple(..));
-    let _ = pretty_name::of_variant!(nested::Choice::<u32>::Struct { value, .. });
+    let _ = pretty_name::of_field!(<nested::Owner<u32>>::field);
+    let _ = pretty_name::of_method!(<nested::Owner<u32>>::method);
+    let _ = pretty_name::of_method!(<nested::Owner<u32>>::generic::<String>);
+    let _ = pretty_name::of_variant!(<nested::Choice<u32>>::Unit);
+    let _ = pretty_name::of_variant!(<nested::Choice<u32>>::Tuple);
     let _ = pretty_name::of_field!(
-        nested::ComplexOwner::<'static, Vec<Vec<u8>>, 4>::field);
+        <nested::ComplexOwner<'static, Vec<Vec<u8>>, 4>>::field);
     let _ = pretty_name::of_method!(
-        nested::ComplexOwner::<'static, Vec<Vec<u8>>, 4>::method);
+        <nested::ComplexOwner<'static, Vec<Vec<u8>>, 4>>::method);
     let _ = pretty_name::of_method!(
-        nested::ComplexOwner::<'static, Vec<Vec<u8>>, 4>::generic::<Option<String>>);
-    let _ = pretty_name::of_variant!(nested::Choice::<Vec<Vec<u8>>>::Tuple(..));
+        <nested::ComplexOwner<'static, Vec<Vec<u8>>, 4>>::generic::<Option<String>>);
+    let _ = pretty_name::of_variant!(<nested::Choice<Vec<Vec<u8>>>>::Tuple);
 }

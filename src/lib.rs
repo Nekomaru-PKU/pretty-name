@@ -104,8 +104,8 @@ impl fmt::Display for IdentifierName {
 /// fn generic<T>() {}
 ///
 /// let name: pretty_name::FunctionName = pretty_name::of_function!(generic::<u32>);
-/// assert_eq!(format!("{name}"), "generic::<u32>");
-/// assert_eq!(name.to_string(), "generic::<u32>");
+/// assert_eq!(format!("{name}"), "generic<u32>");
+/// assert_eq!(name.to_string(), "generic<u32>");
 /// assert!(format!("{name:?}").starts_with("FunctionName {"));
 /// ```
 #[derive(Debug)]
@@ -123,7 +123,7 @@ impl fmt::Display for FunctionName {
     }
 }
 
-/// A validated field, method, or variant identifier with its compiler-resolved owner.
+/// A compiler-validated member identifier with its compiler-resolved owner.
 ///
 /// # Examples
 ///
@@ -153,6 +153,9 @@ impl fmt::Display for MemberName {
         fmt::Display::fmt(&self.owner, formatter)?;
         formatter.write_str(">::")?;
         formatter.write_str(self.ident)?;
+        if !self.args.is_empty() {
+            formatter.write_str("::")?;
+        }
         write_generic_arguments(&self.args, formatter)
     }
 }
@@ -185,10 +188,12 @@ macro_rules! of_var {
 
 /// Gets a validated function name with compiler-resolved generic type arguments.
 ///
-/// Non-generic functions use the identifier-only form. Generic functions must specify
-/// every caller-provided generic argument, and every argument must be a concrete type.
-/// Inferred arguments, direct const arguments, and the legacy `::<..>` placeholder are
-/// intentionally unsupported.
+/// Module-qualified functions use their ordinary Rust path. Associated functions on a
+/// qualified or generic type use an angle-wrapped owner, such as
+/// `<module::Owner<T>>::function`. Generic functions must specify every caller-provided
+/// generic argument, and every argument must be a concrete type. Inferred arguments,
+/// direct const arguments, and the legacy `::<..>` placeholder are intentionally
+/// unsupported.
 ///
 /// # Examples
 /// ```rust
@@ -198,10 +203,10 @@ macro_rules! of_var {
 /// assert_eq!(pretty_name::of_function!(my_function).to_string(), "my_function");
 /// assert_eq!(
 ///     pretty_name::of_function!(my_generic_function::<u32>).to_string(),
-///     "my_generic_function::<u32>");
+///     "my_generic_function<u32>");
 /// assert_eq!(
 ///     pretty_name::of_function!(my_generic_function_2args::<u32, String>).to_string(),
-///     "my_generic_function_2args::<u32, String>");
+///     "my_generic_function_2args<u32, String>");
 /// ```
 ///
 /// A generic function cannot omit its type arguments:
@@ -251,6 +256,57 @@ macro_rules! of_function {
             stringify!($ident),
             ::std::boxed::Box::new([$($crate::type_name::<$arg>()),*]))
     }};
+    (<$owner:path> :: $ident:ident) => {{
+        let _ = &<$owner>::$ident;
+        $crate::__function_name(
+            stringify!($ident),
+            ::std::boxed::Box::new([]))
+    }};
+    (<$owner:path> :: $ident:ident ::<$($arg:ty),+ $(,)?>) => {{
+        let _ = &<$owner>::$ident::<$($arg),*>;
+        $crate::__function_name(
+            stringify!($ident),
+            ::std::boxed::Box::new([$($crate::type_name::<$arg>()),*]))
+    }};
+    ($head:ident :: $($rest:tt)+) => {
+        $crate::__qualified_function_name!([$head ::] $($rest)+)
+    };
+    (:: $head:ident $($rest:tt)*) => {
+        $crate::__qualified_function_name!([::] $head $($rest)*)
+    };
+    ($($invalid:tt)*) => {
+        compile_error!(
+            "expected a function path, optionally followed by explicit type arguments")
+    };
+}
+
+/// Finds the final identifier in an ordinary module-qualified function path.
+///
+/// This implementation-only macro walks forward through `identifier::` segments. A
+/// qualified or generic associated owner is deliberately handled by the angle-wrapped
+/// public form so this helper never needs to balance or reverse-match generic tokens.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __qualified_function_name {
+    ([$($prefix:tt)*] $ident:ident) => {{
+        let _ = &$($prefix)*$ident;
+        $crate::__function_name(
+            stringify!($ident),
+            ::std::boxed::Box::new([]))
+    }};
+    ([$($prefix:tt)*] $ident:ident ::<$($arg:ty),+ $(,)?>) => {{
+        let _ = &$($prefix)*$ident::<$($arg),*>;
+        $crate::__function_name(
+            stringify!($ident),
+            ::std::boxed::Box::new([$($crate::type_name::<$arg>()),*]))
+    }};
+    ([$($prefix:tt)*] $segment:ident :: $($rest:tt)+) => {
+        $crate::__qualified_function_name!([$($prefix)* $segment ::] $($rest)+)
+    };
+    ([$($prefix:tt)*] $($invalid:tt)*) => {
+        compile_error!(
+            "expected a module-qualified function path with explicit type arguments, or an angle-wrapped associated owner")
+    };
 }
 
 /// Gets a diagnostic name for the compiler-resolved type.
@@ -284,8 +340,9 @@ macro_rules! of_type {
 ///
 /// This macro resolves `Self` to the appropriate type when used inside an `impl` block.
 ///
-/// The owner must be a named type path. Qualified and generic owners use ordinary Rust
-/// path syntax such as `module::Type::field` and `Type::<T>::field`.
+/// A single-identifier owner uses `Type::field`. Qualified or generic owners must be
+/// wrapped in angle brackets, as in `<module::Type<T>>::field`. The wrapper makes the
+/// owner boundary explicit while preserving ordinary Rust syntax and name resolution.
 ///
 /// # Examples
 /// ```rust
@@ -299,7 +356,7 @@ macro_rules! of_type {
 ///     pretty_name::of_field!(MyStruct::my_field).to_string(),
 ///     "<MyStruct>::my_field");
 /// assert_eq!(
-///     pretty_name::of_field!(MyGenericStruct::<u32>::my_field).to_string(),
+///     pretty_name::of_field!(<MyGenericStruct<u32>>::my_field).to_string(),
 ///     "<MyGenericStruct<u32>>::my_field");
 /// ```
 ///
@@ -311,13 +368,19 @@ macro_rules! of_type {
 /// ```
 #[macro_export]
 macro_rules! of_field {
-    ($head:ident :: $($rest:tt)+) => {
-        $crate::__split_member_owner!(
-            #[internal(path = "path", kind = "field", mode = "")]
-            [$head] :: $($rest)+)
+    ($owner:ident :: $field:ident) => {
+        $crate::of_field!(<$owner>::$field)
     };
+    (<$owner:path> :: $field:ident) => {{
+        let _ = |obj: $owner| { let _ = &obj.$field; };
+        $crate::__member_name(
+            $crate::type_name::<$owner>(),
+            stringify!($field),
+            ::std::boxed::Box::new([]))
+    }};
     ($($invalid:tt)*) => {
-        compile_error!("expected a named owner path followed by `::field`")
+        compile_error!(
+            "expected `Owner::field` or `<qualified::Owner<Args>>::field`")
     };
 }
 
@@ -325,8 +388,8 @@ macro_rules! of_field {
 ///
 /// This macro resolves `Self` to the appropriate type when used inside an `impl` block.
 ///
-/// The owner must be a named type path. Qualified and generic owners use ordinary Rust
-/// path syntax such as `module::Type::method` and `Type::<T>::method`.
+/// A single-identifier owner uses `Type::method`. Qualified or generic owners must be
+/// wrapped in angle brackets, as in `<module::Type<T>>::method`.
 ///
 /// A generic method must specify every caller-provided generic argument, and every
 /// argument must be a concrete type. Inferred arguments, direct const arguments, and
@@ -351,11 +414,11 @@ macro_rules! of_field {
 ///     pretty_name::of_method!(MyStruct::my_generic_method::<u32>).to_string(),
 ///     "<MyStruct>::my_generic_method::<u32>");
 /// assert_eq!(
-///     pretty_name::of_method!(MyGenericStruct::<u32>::my_method).to_string(),
+///     pretty_name::of_method!(<MyGenericStruct<u32>>::my_method).to_string(),
 ///     "<MyGenericStruct<u32>>::my_method");
 /// assert_eq!(
 ///     pretty_name::of_method!(
-///         MyGenericStruct::<u32>::my_generic_method::<String>).to_string(),
+///         <MyGenericStruct<u32>>::my_generic_method::<String>).to_string(),
 ///     "<MyGenericStruct<u32>>::my_generic_method::<String>");
 /// ```
 ///
@@ -399,14 +462,29 @@ macro_rules! of_field {
 /// ```
 #[macro_export]
 macro_rules! of_method {
-    ($head:ident :: $($rest:tt)+) => {
-        $crate::__split_member_owner!(
-            #[internal(path = "path", kind = "method", mode = "")]
-            [$head] :: $($rest)+)
+    ($owner:ident :: $method:ident) => {
+        $crate::of_method!(<$owner>::$method)
     };
+    ($owner:ident :: $method:ident ::<$($arg:ty),+ $(,)?>) => {
+        $crate::of_method!(<$owner>::$method::<$($arg),*>)
+    };
+    (<$owner:path> :: $method:ident) => {{
+        let _ = &<$owner>::$method;
+        $crate::__member_name(
+            $crate::type_name::<$owner>(),
+            stringify!($method),
+            ::std::boxed::Box::new([]))
+    }};
+    (<$owner:path> :: $method:ident ::<$($arg:ty),+ $(,)?>) => {{
+        let _ = &<$owner>::$method::<$($arg),*>;
+        $crate::__member_name(
+            $crate::type_name::<$owner>(),
+            stringify!($method),
+            ::std::boxed::Box::new([$($crate::type_name::<$arg>()),*]))
+    }};
     ($($invalid:tt)*) => {
         compile_error!(
-            "expected a named owner path followed by `::method` or `::method::<Types...>`")
+            "expected `Owner::method` or `<qualified::Owner<Args>>::method`, optionally followed by explicit type arguments")
     };
 }
 
@@ -414,19 +492,19 @@ macro_rules! of_method {
 ///
 /// This macro resolves `Self` to the appropriate type when used inside an `impl` block.
 ///
-/// This macro supports unit, tuple, and struct variants. The struct form names one
-/// field so Rust can distinguish it from unit and tuple variants; a bare `{ .. }`
-/// pattern is valid for every variant shape and therefore cannot provide that check.
+/// This macro supports unit and tuple variants through the same bare variant path.
+/// Unit variants are values and tuple variants are function-like constructors, so
+/// ordinary associated-item resolution validates both without pattern syntax. Struct
+/// variants are intentionally unsupported because they are not first-class values.
 ///
-/// The owner must be a named enum path. Qualified and generic owners use ordinary Rust
-/// path syntax such as `module::MyEnum::Variant` and `MyEnum::<T>::Variant`.
+/// A single-identifier owner uses `Enum::Variant`. Qualified or generic owners must be
+/// wrapped in angle brackets, as in `<module::Enum<T>>::Variant`.
 ///
 /// # Examples
 /// ```rust
 /// enum MyEnum {
 ///     UnitVariant,
 ///     TupleVariant(u32, String),
-///     StructVariant { field: u32 },
 /// }
 /// enum MyGenericEnum<T> {
 ///     UnitVariant,
@@ -436,24 +514,26 @@ macro_rules! of_method {
 ///     pretty_name::of_variant!(MyEnum::UnitVariant).to_string(),
 ///     "<MyEnum>::UnitVariant");
 /// assert_eq!(
-///     pretty_name::of_variant!(MyEnum::TupleVariant(..)).to_string(),
+///     pretty_name::of_variant!(MyEnum::TupleVariant).to_string(),
 ///     "<MyEnum>::TupleVariant");
 /// assert_eq!(
-///     pretty_name::of_variant!(MyEnum::StructVariant { field, .. }).to_string(),
-///     "<MyEnum>::StructVariant");
-/// assert_eq!(
-///     pretty_name::of_variant!(MyGenericEnum::<u32>::UnitVariant).to_string(),
+///     pretty_name::of_variant!(<MyGenericEnum<u32>>::UnitVariant).to_string(),
 ///     "<MyGenericEnum<u32>>::UnitVariant");
 /// ```
 ///
-/// The requested variant shape is checked at compile time:
+/// Struct variants are rejected because their path is not a value or tuple
+/// constructor:
 ///
 /// ```compile_fail
-/// enum MyEnum { Tuple(u32) }
-/// let _ = pretty_name::of_variant!(MyEnum::Tuple);
+/// enum MyEnum { Struct { value: u32 } }
+/// let _ = pretty_name::of_variant!(MyEnum::Struct);
 /// ```
 ///
-/// Missing variants are rejected:
+/// The associated item must resolve, but stable Rust does not expose whether that item
+/// was declared specifically as a variant. An associated constant or function with
+/// the requested name therefore also satisfies this validation.
+///
+/// Missing associated items are rejected:
 ///
 /// ```compile_fail
 /// enum MyEnum { Unit }
@@ -461,242 +541,21 @@ macro_rules! of_method {
 /// ```
 #[macro_export]
 macro_rules! of_variant {
-    ($head:ident :: $($rest:tt)+) => {
-        $crate::__split_member_owner!(
-            #[internal(path = "path", kind = "variant", mode = "")]
-            [$head] :: $($rest)+)
+    ($owner:ident :: $variant:ident) => {
+        $crate::of_variant!(<$owner>::$variant)
     };
+    (<$owner:path> :: $variant:ident) => {{
+        // Type-check the item without constructing a unit variant whose `Drop`
+        // implementation could otherwise run as a naming side effect.
+        let _ = || <$owner>::$variant;
+        $crate::__member_name(
+            $crate::type_name::<$owner>(),
+            stringify!($variant),
+            ::std::boxed::Box::new([]))
+    }};
     ($($invalid:tt)*) => {
-        compile_error!("expected a named owner path followed by a supported variant shape")
-    };
-}
-
-/// Splits a named owner path from its final field, method, or variant segment.
-///
-/// `macro_rules!` cannot bind an owner as `path` or `ty` immediately before `::`, so
-/// this implementation-only macro recognizes the path separators and balanced owner
-/// turbofish without interpreting the captured owner. The expanded Rust expressions
-/// remain responsible for parsing the owner as a type and validating the referenced
-/// member.
-#[doc(hidden)]
-#[macro_export]
-macro_rules! __split_member_owner {
-    // Terminal field form. Requiring the complete remainder prevents a module or type
-    // path segment from being mistaken for the field identifier.
-    (
-        #[internal(path = "path", kind = "field", mode = "")]
-        [$($owner:tt)+] :: $field:ident
-    ) => {{
-        let _ = |obj: $($owner)+| { let _ = &obj.$field; };
-        $crate::__member_name(
-            $crate::type_name::<$($owner)+>(),
-            stringify!($field),
-            ::std::boxed::Box::new([]))
-    }};
-
-    // Terminal method forms retain the existing complete-item validation contract.
-    (
-        #[internal(path = "path", kind = "method", mode = "")]
-        [$($owner:tt)+] :: $method:ident
-    ) => {{
-        let _ = &$($owner)+::$method;
-        $crate::__member_name(
-            $crate::type_name::<$($owner)+>(),
-            stringify!($method),
-            ::std::boxed::Box::new([]))
-    }};
-
-    // Terminal variant forms validate both the selected variant and its requested
-    // shape through ordinary Rust patterns.
-    (
-        #[internal(path = "path", kind = "variant", mode = "")]
-        [$($owner:tt)+] :: $variant:ident
-    ) => {{
-        let _ = |obj: $($owner)+| match obj {
-            $($owner)+::$variant => {},
-            _ => {},
-        };
-        $crate::__member_name(
-            $crate::type_name::<$($owner)+>(),
-            stringify!($variant),
-            ::std::boxed::Box::new([]))
-    }};
-    (
-        #[internal(path = "path", kind = "variant", mode = "")]
-        [$($owner:tt)+] :: $variant:ident (..)
-    ) => {{
-        let _ = |obj: $($owner)+| match obj {
-            $($owner)+::$variant(..) => {},
-            _ => {},
-        };
-        $crate::__member_name(
-            $crate::type_name::<$($owner)+>(),
-            stringify!($variant),
-            ::std::boxed::Box::new([]))
-    }};
-    (
-        #[internal(path = "path", kind = "variant", mode = "")]
-        [$($owner:tt)+] :: $variant:ident { $field:ident, .. }
-    ) => {{
-        let _ = |obj: $($owner)+| match obj {
-            $($owner)+::$variant { $field: _, .. } => {},
-            _ => {},
-        };
-        $crate::__member_name(
-            $crate::type_name::<$($owner)+>(),
-            stringify!($variant),
-            ::std::boxed::Box::new([]))
-    }};
-
-    // A turbofish immediately after the accumulated path belongs to its final owner
-    // segment, while one after a new segment may instead belong to a generic method.
-    (
-        #[internal(path = "path", kind = $kind:tt, mode = "")]
-        [$($owner:tt)+] :: < $($input:tt)*
-    ) => {
-        $crate::__split_member_owner!(
-            #[internal(path = "generic", kind = $kind, mode = "owner")]
-            [$($owner)+] [] [] [] $($input)*)
-    };
-    (
-        #[internal(path = "path", kind = $kind:tt, mode = "")]
-        [$($owner:tt)+] :: $segment:ident :: < $($input:tt)*
-    ) => {
-        $crate::__split_member_owner!(
-            #[internal(path = "generic", kind = $kind, mode = "segment")]
-            [$($owner)+] [$segment] [] [] $($input)*)
-    };
-
-    // A non-terminal identifier is another named segment of the owner path.
-    (
-        #[internal(path = "path", kind = $kind:tt, mode = "")]
-        [$($owner:tt)+] :: $segment:ident $($rest:tt)+
-    ) => {
-        $crate::__split_member_owner!(
-            #[internal(path = "path", kind = $kind, mode = "")]
-            [$($owner)+ :: $segment] $($rest)+)
-    };
-
-    // Rust lexes adjacent closing generic brackets as `>>`. These two arms consume
-    // either one nested level plus the outer turbofish, or two nested levels.
-    (
-        #[internal(path = "generic", kind = $kind:tt, mode = $mode:tt)]
-        [$($owner:tt)+] [$($segment:tt)*] [$($args:tt)*] [@] >> $($after:tt)*) => {
-        $crate::__split_member_owner!(
-            #[internal(path = "after_generic", kind = $kind, mode = $mode)]
-            [$($owner)+] [$($segment)*] [$($args)* >] $($after)*)
-    };
-    (
-        #[internal(path = "generic", kind = $kind:tt, mode = $mode:tt)]
-        [$($owner:tt)+] [$($segment:tt)*] [$($args:tt)*]
-        [@ @ $($depth:tt)*] >> $($rest:tt)*) => {
-        $crate::__split_member_owner!(
-            #[internal(path = "generic", kind = $kind, mode = $mode)]
-            [$($owner)+] [$($segment)*] [$($args)* >>] [$($depth)*] $($rest)*)
-    };
-
-    // A close at depth zero terminates this turbofish. Nested angle brackets are kept
-    // verbatim so rustc receives the exact generic arguments written by the caller.
-    (
-        #[internal(path = "generic", kind = $kind:tt, mode = $mode:tt)]
-        [$($owner:tt)+] [$($segment:tt)*] [$($args:tt)*] [] > $($after:tt)*) => {
-        $crate::__split_member_owner!(
-            #[internal(path = "after_generic", kind = $kind, mode = $mode)]
-            [$($owner)+] [$($segment)*] [$($args)*] $($after)*)
-    };
-    (
-        #[internal(path = "generic", kind = $kind:tt, mode = $mode:tt)]
-        [$($owner:tt)+] [$($segment:tt)*] [$($args:tt)*]
-        [$($depth:tt)*] < $($rest:tt)*) => {
-        $crate::__split_member_owner!(
-            #[internal(path = "generic", kind = $kind, mode = $mode)]
-            [$($owner)+] [$($segment)*] [$($args)* <] [@ $($depth)*] $($rest)*)
-    };
-    (
-        #[internal(path = "generic", kind = $kind:tt, mode = $mode:tt)]
-        [$($owner:tt)+] [$($segment:tt)*] [$($args:tt)*]
-        [@ $($depth:tt)*] > $($rest:tt)*) => {
-        $crate::__split_member_owner!(
-            #[internal(path = "generic", kind = $kind, mode = $mode)]
-            [$($owner)+] [$($segment)*] [$($args)* >] [$($depth)*] $($rest)*)
-    };
-    (
-        #[internal(path = "generic", kind = $kind:tt, mode = $mode:tt)]
-        [$($owner:tt)+] [$($segment:tt)*] [$($args:tt)*]
-        [$($depth:tt)*] $next:tt $($rest:tt)*) => {
-        $crate::__split_member_owner!(
-            #[internal(path = "generic", kind = $kind, mode = $mode)]
-            [$($owner)+] [$($segment)*] [$($args)* $next] [$($depth)*] $($rest)*)
-    };
-
-    // Owner generics must be followed by another path segment because the macro names
-    // a member rather than the owner itself.
-    (
-        #[internal(path = "after_generic", kind = $kind:tt, mode = "owner")]
-        [$($owner:tt)+] [] [$($args:tt)*] $($after:tt)+) => {
-        $crate::__split_member_owner!(
-            #[internal(path = "path", kind = $kind, mode = "")]
-            [$($owner)+ :: < $($args)* >] $($after)+)
-    };
-
-    // A terminal generic segment is necessarily a method. Parsing its arguments as
-    // `ty` here enforces the explicit-type-only generic method contract.
-    (
-        #[internal(path = "after_generic", kind = "method", mode = "segment")]
-        [$($owner:tt)+] [$method:ident] [$($args:tt)*]) => {
-        $crate::__split_member_owner!(
-            #[internal(path = "finish_method", kind = "method", mode = "")]
-            [$($owner)+] $method [$($args)*])
-    };
-    (
-        #[internal(path = "after_generic", kind = $kind:tt, mode = "segment")]
-        [$($owner:tt)+] [$segment:ident] [$($args:tt)*] $($after:tt)+) => {
-        $crate::__split_member_owner!(
-            #[internal(path = "path", kind = $kind, mode = "")]
-            [$($owner)+ :: $segment :: < $($args)* >] $($after)+)
-    };
-    (
-        #[internal(path = "finish_method", kind = "method", mode = "")]
-        [$($owner:tt)+] $method:ident [$($arg:ty),+ $(,)?]) => {{
-        let _ = &$($owner)+::$method::<$($arg),*>;
-        $crate::__member_name(
-            $crate::type_name::<$($owner)+>(),
-            stringify!($method),
-            ::std::boxed::Box::new([$($crate::type_name::<$arg>()),*]))
-    }};
-
-    // Exhausting the input in a non-terminal state gives callers a stable diagnostic
-    // instead of exposing this implementation macro's internal matcher states.
-    (
-        #[internal(path = "path", kind = "field", mode = "")]
-        [$($owner:tt)+] $($invalid:tt)*) => {
-        compile_error!("expected a named owner path followed by `::field`")
-    };
-    (
-        #[internal(path = "path", kind = "method", mode = "")]
-        [$($owner:tt)+] $($invalid:tt)*) => {
         compile_error!(
-            "expected a named owner path followed by `::method` or `::method::<Types...>`")
-    };
-    (
-        #[internal(path = "path", kind = "variant", mode = "")]
-        [$($owner:tt)+] $($invalid:tt)*) => {
-        compile_error!("expected a named owner path followed by a supported variant shape")
-    };
-    (
-        #[internal(path = "generic", kind = $kind:tt, mode = $mode:tt)]
-        [$($owner:tt)+] [$($segment:tt)*] [$($args:tt)*] [$($depth:tt)*]) => {
-        compile_error!("unclosed generic argument list in member owner path")
-    };
-    (
-        #[internal(path = "after_generic", kind = $kind:tt, mode = $mode:tt)]
-        [$($owner:tt)+] [$($segment:tt)*] [$($args:tt)*]) => {
-        compile_error!("a generic field or variant name is not supported")
-    };
-    (
-        #[internal(path = "finish_method", kind = "method", mode = "")]
-        [$($owner:tt)+] $method:ident [$($invalid:tt)*]) => {
-        compile_error!("generic method arguments must be explicit types")
+            "expected `Owner::Variant` or `<qualified::Owner<Args>>::Variant`")
     };
 }
 
@@ -731,7 +590,7 @@ pub fn __member_name(
     MemberName { owner, ident, args }
 }
 
-/// Writes a non-empty argument list with canonical turbofish punctuation.
+/// Writes a non-empty angle-bracketed argument list.
 ///
 /// An empty slice deliberately writes nothing so the same representation serves plain
 /// functions, fields, variants, and non-generic methods.
@@ -742,7 +601,7 @@ fn write_generic_arguments(
         return Ok(());
     };
 
-    formatter.write_str("::<")?;
+    formatter.write_str("<")?;
     fmt::Display::fmt(first, formatter)?;
     for argument in remaining {
         formatter.write_str(", ")?;

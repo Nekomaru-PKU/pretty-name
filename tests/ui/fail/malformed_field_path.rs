@@ -1,4 +1,4 @@
-/// An owner used to verify malformed field suffixes reach the splitter fallback.
+/// An owner used to verify malformed field suffixes reach the public grammar fallback.
 struct Owner {
     /// A field whose call-like suffix is deliberately invalid.
     field: u32,

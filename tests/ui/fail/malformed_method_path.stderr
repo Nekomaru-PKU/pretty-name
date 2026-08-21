@@ -1,7 +1,7 @@
-error: expected a named owner path followed by `::method` or `::method::<Types...>`
+error: expected `Owner::method` or `<qualified::Owner<Args>>::method`, optionally followed by explicit type arguments
   --> tests/ui/fail/malformed_method_path.rs:10:13
    |
 10 |     let _ = pretty_name::of_method!(Owner::method());
    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = note: this error originates in the macro `$crate::__split_member_owner` which comes from the expansion of the macro `pretty_name::of_method` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the macro `pretty_name::of_method` (in Nightly builds, run with -Z macro-backtrace for more info)

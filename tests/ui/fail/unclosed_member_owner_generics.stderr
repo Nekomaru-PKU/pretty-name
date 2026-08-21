@@ -1,7 +1,7 @@
-error: unclosed generic argument list in member owner path
+error: expected `Owner::field` or `<qualified::Owner<Args>>::field`
  --> tests/ui/fail/unclosed_member_owner_generics.rs:8:13
   |
-8 |     let _ = pretty_name::of_field!(Owner::<u32);
-  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+8 |     let _ = pretty_name::of_field!(<Owner<u32>::field);
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   |
-  = note: this error originates in the macro `$crate::__split_member_owner` which comes from the expansion of the macro `pretty_name::of_field` (in Nightly builds, run with -Z macro-backtrace for more info)
+  = note: this error originates in the macro `pretty_name::of_field` (in Nightly builds, run with -Z macro-backtrace for more info)

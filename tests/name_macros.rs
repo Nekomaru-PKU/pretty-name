@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 mod fixtures {
     /// A constant used to verify constant identifier names.
     pub const NAMED_CONSTANT: u32 = 42;
@@ -77,6 +79,12 @@ mod fixtures {
     }
 
     impl<T> GenericOwner<T> {
+        /// An associated function referenced through a qualified generic owner.
+        pub fn associated_function() {}
+
+        /// A generic associated function referenced through a qualified generic owner.
+        pub fn generic_associated_function<U>() {}
+
         /// A method referenced by qualified method-name macros.
         pub fn method(&self) {}
 
@@ -89,17 +97,12 @@ mod fixtures {
         }
     }
 
-    /// An enum containing every supported variant shape.
+    /// An enum containing every supported variant category.
     pub enum SimpleEnum {
         /// A unit variant used by variant-name macros.
         Unit,
         /// A tuple variant used by variant-name macros.
         Tuple(u32),
-        /// A struct variant used by variant-name macros.
-        Struct {
-            /// A payload used to make the struct shape concrete.
-            value: u32,
-        },
     }
 
     /// A generic enum used to verify qualified and `Self`-based variant names.
@@ -108,11 +111,6 @@ mod fixtures {
         Unit,
         /// A tuple variant used by variant-name macros.
         Tuple(T),
-        /// A struct variant used by variant-name macros.
-        Struct {
-            /// A payload used to make the struct shape concrete.
-            value: T,
-        },
     }
 
     impl<T> GenericEnum<T> {
@@ -121,16 +119,24 @@ mod fixtures {
             pretty_name::of_variant!(Self::Unit)
         }
 
-        /// Gets the tuple variant name through `Self`.
+        /// Gets the tuple-constructor variant name through `Self`.
         pub fn self_tuple_name() -> pretty_name::MemberName {
-            pretty_name::of_variant!(Self::Tuple(..))
-        }
-
-        /// Gets the struct variant name through `Self`.
-        pub fn self_struct_name() -> pretty_name::MemberName {
-            pretty_name::of_variant!(Self::Struct { value, .. })
+            pretty_name::of_variant!(Self::Tuple)
         }
     }
+}
+
+/// Counts destructor calls caused by constructing [`DroppingEnum`] values.
+static VARIANT_DROP_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+/// An enum whose destructor makes accidental variant construction observable.
+enum DroppingEnum {
+    /// A unit variant referenced only for its source identifier.
+    Unit,
+}
+
+impl Drop for DroppingEnum {
+    fn drop(&mut self) { VARIANT_DROP_COUNT.fetch_add(1, Ordering::Relaxed); }
 }
 
 use fixtures::{
@@ -178,7 +184,51 @@ fn function_macro_formats_explicit_generic_arguments() {
     assert_eq!(
         pretty_name::of_function!(
             generic_pair::<std::vec::Vec<u8>, std::string::String>).to_string(),
-        "generic_pair::<Vec<u8>, String>");
+        "generic_pair<Vec<u8>, String>");
+}
+
+/// Verifies module qualification validates the complete path but is not displayed.
+#[test]
+fn function_macro_accepts_a_module_qualified_function() {
+    assert_eq!(
+        pretty_name::of_function!(fixtures::plain_function).to_string(),
+        "plain_function");
+}
+
+/// Verifies a qualified generic function retains only its final source identifier.
+#[test]
+fn function_macro_accepts_a_module_qualified_generic_function() {
+    assert_eq!(
+        pretty_name::of_function!(
+            fixtures::generic_pair::<std::vec::Vec<u8>, String>).to_string(),
+        "generic_pair<Vec<u8>, String>");
+}
+
+/// Verifies an absolute function path is scanned forward to its final identifier.
+#[test]
+fn function_macro_accepts_an_absolute_generic_function_path() {
+    assert_eq!(
+        pretty_name::of_function!(::std::mem::drop::<u32>).to_string(),
+        "drop<u32>");
+}
+
+/// Verifies a generic associated owner is explicit and omitted from function output.
+#[test]
+fn function_macro_accepts_an_angle_wrapped_associated_function() {
+    assert_eq!(
+        pretty_name::of_function!(
+            <fixtures::GenericOwner::<std::vec::Vec<u8>>>::associated_function).to_string(),
+        "associated_function");
+}
+
+/// Verifies associated-function type arguments use the function display grammar.
+#[test]
+fn function_macro_accepts_an_angle_wrapped_generic_associated_function() {
+    assert_eq!(
+        pretty_name::of_function!(
+            <fixtures::GenericOwner<u32>>::generic_associated_function::<
+                std::vec::Vec<u8>>).to_string(),
+        "generic_associated_function<Vec<u8>>");
 }
 
 /// Verifies a renamed import is validated semantically while retaining its source name.
@@ -186,7 +236,7 @@ fn function_macro_formats_explicit_generic_arguments() {
 fn function_macro_preserves_a_renamed_import_identifier() {
     assert_eq!(
         pretty_name::of_function!(renamed_generic_function::<u32>).to_string(),
-        "renamed_generic_function::<u32>");
+        "renamed_generic_function<u32>");
 }
 
 /// Verifies one function macro call site resolves each monomorphization independently.
@@ -196,7 +246,7 @@ fn function_values_distinguish_generic_monomorphizations() {
         (
             generic_function_name::<u8>().to_string(),
             generic_function_name::<u16>().to_string()),
-        names!("generic_function::<u8>", "generic_function::<u16>"));
+        names!("generic_function<u8>", "generic_function<u16>"));
 }
 
 /// Verifies a function name owns its arguments and can be formatted after construction.
@@ -204,7 +254,7 @@ fn function_values_distinguish_generic_monomorphizations() {
 fn function_values_can_be_stored_for_later_formatting() {
     let name = generic_function_name::<std::vec::Vec<u32>>();
 
-    assert_eq!(name.to_string(), "generic_function::<Vec<u32>>");
+    assert_eq!(name.to_string(), "generic_function<Vec<u32>>");
 }
 
 /// Verifies simple and compound type forms both resolve aliases.
@@ -259,7 +309,7 @@ fn field_macro_shortens_qualified_generic_owner() {
     assert_eq!(
         (
             pretty_name::of_field!(
-                fixtures::GenericOwner::<u32>::value).to_string(),
+                <fixtures::GenericOwner::<u32>>::value).to_string(),
             owner.value),
         ("<GenericOwner<u32>>::value".to_owned(), 42));
 }
@@ -314,9 +364,9 @@ fn method_macro_shortens_qualified_owner_and_generic_arguments() {
     assert_eq!(
         (
             pretty_name::of_method!(
-                fixtures::GenericOwner::<u32>::method).to_string(),
+                <fixtures::GenericOwner<u32>>::method).to_string(),
             pretty_name::of_method!(
-                fixtures::GenericOwner::<u32>::generic_method::<
+                <fixtures::GenericOwner<u32>>::generic_method::<
                     std::string::String>).to_string()),
         names!(
             "<GenericOwner<u32>>::method",
@@ -364,9 +414,9 @@ fn self_method_values_distinguish_generic_monomorphizations() {
         names!("<GenericOwner<u8>>::method", "<GenericOwner<u16>>::method"));
 }
 
-/// Verifies simple unit, tuple, and struct variants return the same owner format.
+/// Verifies simple unit and tuple variants use the same bare syntax and owner format.
 #[test]
-fn variant_macro_supports_every_simple_variant_shape() {
+fn variant_macro_supports_unit_and_tuple_variants() {
     let unit_name = match SimpleEnum::Unit {
         SimpleEnum::Unit => pretty_name::of_variant!(SimpleEnum::Unit),
         _ => unreachable!(),
@@ -375,35 +425,37 @@ fn variant_macro_supports_every_simple_variant_shape() {
         SimpleEnum::Tuple(value) => value,
         _ => unreachable!(),
     };
-    let struct_value = match (SimpleEnum::Struct { value: 9 }) {
-        SimpleEnum::Struct { value } => value,
-        _ => unreachable!(),
-    };
-
     assert_eq!(
         (
             unit_name.to_string(),
-            pretty_name::of_variant!(SimpleEnum::Tuple(..)).to_string(),
-            pretty_name::of_variant!(SimpleEnum::Struct { value, .. }).to_string(),
-            tuple_value,
-            struct_value),
+            pretty_name::of_variant!(SimpleEnum::Tuple).to_string(),
+            tuple_value),
         (
             String::from("<SimpleEnum>::Unit"),
             String::from("<SimpleEnum>::Tuple"),
-            String::from("<SimpleEnum>::Struct"),
-            7,
-            9));
+            7));
 }
 
-/// Verifies stable generic variant forms support qualification and source-spelled aliases.
+/// Verifies validation does not construct and drop a unit-variant value at runtime.
 #[test]
-fn variant_macro_supports_stable_generic_variant_forms() {
-    /// An alias that gives tuple and struct variants a stable simple path.
+fn variant_macro_does_not_evaluate_the_referenced_variant() {
+    VARIANT_DROP_COUNT.store(0, Ordering::Relaxed);
+    let name = pretty_name::of_variant!(DroppingEnum::Unit);
+
+    assert_eq!(
+        (name.to_string(), VARIANT_DROP_COUNT.load(Ordering::Relaxed)),
+        (String::from("<DroppingEnum>::Unit"), 0));
+}
+
+/// Verifies generic variant constructors support qualification and source-spelled aliases.
+#[test]
+fn variant_macro_supports_generic_variant_constructors() {
+    /// An alias that gives the tuple variant a simple owner path.
     type GenericU32 = GenericEnum<u32>;
 
     let unit_name = match GenericEnum::<u32>::Unit {
         GenericEnum::Unit => {
-            pretty_name::of_variant!(fixtures::GenericEnum::<u32>::Unit)
+            pretty_name::of_variant!(<fixtures::GenericEnum<u32>>::Unit)
         }
         _ => unreachable!(),
     };
@@ -411,38 +463,27 @@ fn variant_macro_supports_stable_generic_variant_forms() {
         GenericEnum::Tuple(value) => value,
         _ => unreachable!(),
     };
-    let struct_value = match (GenericEnum::Struct { value: 9_u32 }) {
-        GenericEnum::Struct { value } => value,
-        _ => unreachable!(),
-    };
-
     assert_eq!(
         (
             unit_name.to_string(),
-            pretty_name::of_variant!(GenericU32::Tuple(..)).to_string(),
-            pretty_name::of_variant!(GenericU32::Struct { value, .. }).to_string(),
-            tuple_value,
-            struct_value),
+            pretty_name::of_variant!(GenericU32::Tuple).to_string(),
+            tuple_value),
         (
             String::from("<GenericEnum<u32>>::Unit"),
             String::from("<GenericEnum<u32>>::Tuple"),
-            String::from("<GenericEnum<u32>>::Struct"),
-            7,
-            9));
+            7));
 }
 
-/// Verifies `Self` supports every variant shape for one concrete owner.
+/// Verifies `Self` supports both variant categories for one concrete owner.
 #[test]
-fn variant_macro_supports_every_self_variant_shape() {
+fn variant_macro_supports_unit_and_tuple_variants_through_self() {
     assert_eq!(
         (
             GenericEnum::<u32>::self_unit_name().to_string(),
-            GenericEnum::<u32>::self_tuple_name().to_string(),
-            GenericEnum::<u32>::self_struct_name().to_string()),
+            GenericEnum::<u32>::self_tuple_name().to_string()),
         names!(
             "<GenericEnum<u32>>::Unit",
-            "<GenericEnum<u32>>::Tuple",
-            "<GenericEnum<u32>>::Struct"));
+            "<GenericEnum<u32>>::Tuple"));
 }
 
 /// Verifies `Self` variant values retain their resolved owner monomorphization.

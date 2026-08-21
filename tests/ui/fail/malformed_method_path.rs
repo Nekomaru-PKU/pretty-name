@@ -1,4 +1,4 @@
-/// An owner used to verify malformed method suffixes reach the splitter fallback.
+/// An owner used to verify malformed method suffixes reach the public grammar fallback.
 struct Owner;
 
 impl Owner {

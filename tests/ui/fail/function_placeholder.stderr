@@ -1,11 +1,7 @@
-error: no rules expected `..`
- --> tests/ui/fail/function_placeholder.rs:6:49
+error: expected a module-qualified function path with explicit type arguments, or an angle-wrapped associated owner
+ --> tests/ui/fail/function_placeholder.rs:6:13
   |
 6 |     let _ = pretty_name::of_function!(generic::<..>);
-  |                                                 ^^ no rules expected this token in macro call
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   |
-note: while trying to match meta-variable `$arg:ty`
- --> src/lib.rs
-  |
-  |     ($ident:ident ::<$($arg:ty),+ $(,)?>) => {{
-  |                        ^^^^^^^
+  = note: this error originates in the macro `$crate::__qualified_function_name` which comes from the expansion of the macro `pretty_name::of_function` (in Nightly builds, run with -Z macro-backtrace for more info)

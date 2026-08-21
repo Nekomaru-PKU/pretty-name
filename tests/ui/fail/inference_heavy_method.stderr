@@ -1,7 +1,7 @@
 error[E0283]: type annotations needed
   --> tests/ui/fail/inference_heavy_method.rs:22:13
    |
-22 |     let _ = pretty_name::of_method!(Owner::<u32>::generated);
+22 |     let _ = pretty_name::of_method!(<Owner<u32>>::generated);
    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
    |
    = note: the type must implement `Param<u32>`

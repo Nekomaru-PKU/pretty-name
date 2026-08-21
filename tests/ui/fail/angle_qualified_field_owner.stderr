@@ -1,7 +1,0 @@
-error: expected a named owner path followed by `::field`
- --> tests/ui/fail/angle_qualified_field_owner.rs:8:13
-  |
-8 |     let _ = pretty_name::of_field!(<Owner<u32>>::field);
-  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  |
-  = note: this error originates in the macro `pretty_name::of_field` (in Nightly builds, run with -Z macro-backtrace for more info)

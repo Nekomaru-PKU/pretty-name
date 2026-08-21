@@ -1,0 +1,12 @@
+error[E0533]: expected value, found struct variant `Choice::Struct`
+  --> tests/ui/fail/struct_variant.rs:12:13
+   |
+12 |     let _ = pretty_name::of_variant!(Choice::Struct);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not a value
+   |
+   = note: this error originates in the macro `$crate::of_variant` which comes from the expansion of the macro `pretty_name::of_variant` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: you might have meant to create a new value of the struct
+  --> src/lib.rs
+   |
+   |         let _ = || <$owner>::$variant { value: /* value */ };
+   |                                       ++++++++++++++++++++++

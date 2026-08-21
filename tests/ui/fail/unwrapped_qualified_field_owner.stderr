@@ -1,0 +1,7 @@
+error: expected `Owner::field` or `<qualified::Owner<Args>>::field`
+  --> tests/ui/fail/unwrapped_qualified_field_owner.rs:12:13
+   |
+12 |     let _ = pretty_name::of_field!(nested::Owner::field);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this error originates in the macro `pretty_name::of_field` (in Nightly builds, run with -Z macro-backtrace for more info)

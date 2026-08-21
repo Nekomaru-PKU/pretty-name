@@ -19,18 +19,18 @@ fn identifier_display_preserves_source_spelling() {
     assert_eq!(__identifier_name("local_value").to_string(), "local_value");
 }
 
-/// Verifies functions without arguments omit turbofish punctuation.
+/// Verifies functions without arguments omit generic punctuation.
 #[test]
 fn function_display_omits_empty_arguments() {
     assert_eq!(__function_name("function", Box::new([])).to_string(), "function");
 }
 
-/// Verifies a single function argument uses canonical turbofish punctuation.
+/// Verifies a single function argument uses the compact function-name grammar.
 #[test]
 fn function_display_formats_one_argument() {
     assert_eq!(
         __function_name("function", Box::new([type_name::<u32>()])).to_string(),
-        "function::<u32>");
+        "function<u32>");
 }
 
 /// Verifies multiple function arguments use canonical separators without a trailing
@@ -42,7 +42,7 @@ fn function_display_formats_many_arguments() {
             "function",
             Box::new([type_name::<std::vec::Vec<u8>>(), type_name::<String>()]))
         .to_string(),
-        "function::<Vec<u8>, String>");
+        "function<Vec<u8>, String>");
 }
 
 /// Verifies fields use the uniform angle-bracketed owner grammar.
@@ -53,7 +53,7 @@ fn member_display_formats_resolved_owner() {
         "<Owner>::field");
 }
 
-/// Verifies method arguments follow the same punctuation as function arguments.
+/// Verifies method arguments retain Rust's associated-item separator.
 #[test]
 fn member_display_formats_arguments() {
     assert_eq!(

@@ -61,10 +61,12 @@ its result:
 | `of_var!(value)` | None | `value` | `IdentifierName` |
 | `of_function!(function)` | None | `function` | `FunctionName` |
 | `of_function!(function::<A, ...>)` | `A, ...` | `function` | `FunctionName` |
+| `of_function!(module::function)` | None | `function` | `FunctionName` |
+| `of_function!(<T>::function::<A, ...>)` | `A, ...` | `function` | `FunctionName` |
 | `of_field!(T::field)` | `T` | `field` | `MemberName` |
 | `of_method!(T::method)` | `T` | `method` | `MemberName` |
 | `of_method!(T::method::<A, ...>)` | `T`, `A, ...` | `method` | `MemberName` |
-| `of_variant!(T::Variant)` and shaped forms | `T` | `Variant` | `MemberName` |
+| `of_variant!(T::Variant)` | `T` | `Variant` | `MemberName` |
 
 Aliases, renamed type imports, generic parameters, and `Self` behave consistently in
 every type-bearing position because the compiler supplies their resolved types.
@@ -105,7 +107,7 @@ the following grammar:
 
 ```text
 function
-function::<Arg1, Arg2>
+function<Arg1, Arg2>
 <Owner>::member
 <Owner>::member::<Arg1, Arg2>
 ```
@@ -114,11 +116,15 @@ Fields, methods, and variants use the same angle-bracketed owner form, including
 simple owner. Arguments are separated by `, ` without a trailing comma. Every owner
 and generic argument is formatted through `TypeName`.
 
+Function generic arguments omit the source turbofish separator to match the function
+item style produced by `core::any::type_name_of_val`. Generic methods retain `::`
+because their identifier is composed after an explicit owner path.
+
 For example:
 
 ```text
 alloc::vec::Vec<crate::model::Record>  ->  Vec<Record>
-function::<crate::model::Record>       ->  function::<Record>
+function::<crate::model::Record>       ->  function<Record>
 crate::model::Owner + field            ->  <Owner>::field
 ```
 
@@ -129,8 +135,8 @@ acceptable because display output is presentation rather than identity.
 
 Each macro separates compiler validation from name construction:
 
-1. Ordinary Rust syntax resolves and type-checks the referenced item, owner,
-   arguments, and requested shape.
+1. Ordinary Rust syntax resolves and type-checks the referenced item, owner, and
+   explicit arguments.
 2. `stringify!` captures only the validated source identifier, while `TypeName`
    construction captures every resolved type component.
 
@@ -143,39 +149,81 @@ The compiler validation obligations are:
 | `of_function!` | The complete function item resolves. |
 | `of_field!` | Field access type-checks for the resolved owner. |
 | `of_method!` | The complete associated method item resolves. |
-| `of_variant!` | A unit, tuple, or struct pattern matches the requested shape. |
+| `of_variant!` | The associated value or function-like constructor resolves. |
 
 No macro arm may accept an identifier without the corresponding compiler check.
-Misspelled items, invalid owners, incomplete generic arguments, and incorrect field or
-variant shapes fail during compilation.
+Misspelled items, invalid owners, incomplete generic arguments, and incorrect fields
+fail during compilation.
 
 ### Member owner grammar
 
-Member owners are named Rust paths written with ordinary path and turbofish syntax:
+Member owners are named Rust paths with an explicit boundary. A single identifier can
+use the compact form, while qualified or generic owners are wrapped in `<...>`:
 
 ```rust
 of_field!(Type::field)
-of_method!(module::Type::method)
-of_method!(Type::<OwnerArgs>::method::<MethodArgs>)
-of_variant!(Enum::<Args>::Variant)
+of_method!(<module::Type>::method)
+of_method!(<Type<OwnerArgs>>::method::<MethodArgs>)
+of_variant!(<module::Enum<Args>>::Variant)
 ```
 
-`Self`, aliases, and bounded type parameters are valid owner paths because rustc can
-resolve them as types. Angle-qualified, qualified-self, and anonymous owner types such
-as `<Type<Args>>::member`, `<T as Trait>::member`, and `<&T>::member` are unsupported.
-A trait-provided method is named through its concrete implementor or a bounded type
+The wrapper is macro input syntax composed entirely from ordinary Rust tokens. It lets
+`macro_rules!` capture the owner directly as `path`, so no token partitioner or
+procedural macro is required. It also leaves the member identifier visible to editor
+completion and refactoring tools.
+
+`Self`, aliases, and bounded type parameters remain valid compact owners because rustc
+can resolve them as types. Angle-wrapped simple owners are accepted as well. A
+trait-provided method is named through its concrete implementor or a bounded type
 parameter such as `T::method`; a bare trait declaration is not a resolved owner type.
+Qualified-self and anonymous owner types such as `<<T as Trait>::Owner>::member` and
+`<&T>::member` are unsupported because they do not satisfy the named `path` contract.
 
-An implementation-only declarative macro partitions a named path from its final member
-segment. It recognizes path separators and balanced owner turbofish tokens only to
-preserve the caller's token sequence. Rustc then reparses the owner in a type position
-and validates the emitted field access, method item, or variant pattern. This token
-partitioning does not interpret compiler-generated type descriptions and therefore
-does not weaken the grammar-aware `TypeName` formatting contract.
+### Function path grammar
 
-The struct-variant form is `T::Variant { field, .. }` and requires one real field name.
-Rust accepts a bare `T::Variant { .. }` pattern for unit and tuple variants as well, so
-the named field is necessary to validate the requested struct shape.
+Module-qualified free functions use their ordinary Rust path because only the final
+identifier needs to be separated:
+
+```rust
+of_function!(module::function)
+of_function!(module::function::<u32>)
+```
+
+A small declarative helper walks forward through `identifier::` module segments and
+captures the final function identifier. It does not inspect or balance generic owner
+tokens. Associated functions on qualified or generic types use the same explicit owner
+boundary as members:
+
+```rust
+of_function!(<module::Type<u32>>::function)
+of_function!(<module::Type<u32>>::function::<String>)
+```
+
+Only the final source identifier and any resolved function type arguments are stored;
+the associated owner is validation context and is not part of `FunctionName` output.
+
+### Variant boundary
+
+`of_variant!` supports unit variants and tuple variants through the same bare path:
+
+```rust
+of_variant!(Enum::Unit)
+of_variant!(<module::Enum<u32>>::Tuple)
+```
+
+A unit variant is a value and a tuple variant is a function-like constructor, so an
+ordinary associated-item expression validates both without pattern-shaped macro
+syntax. Struct variants are intentionally unsupported because their paths are not
+first-class values.
+
+The validation expression is placed inside an uncalled closure. Rustc still resolves
+and type-checks its body, but naming a unit variant cannot construct a temporary or run
+that enum's `Drop` implementation.
+
+Stable Rust does not expose an item's declaration category through this expression.
+An associated constant or function with the requested name therefore satisfies the
+same check. This is an explicit semantic boundary: the macro guarantees that the owner
+and associated item resolve, not that compiler reflection identified an enum variant.
 
 ### Generic functions and methods
 

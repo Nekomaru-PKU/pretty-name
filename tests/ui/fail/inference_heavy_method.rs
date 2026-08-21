@@ -19,5 +19,5 @@ impl<T> Owner<T> {
 
 /// Requests a method name while leaving its conversion argument type ambiguous.
 fn main() {
-    let _ = pretty_name::of_method!(Owner::<u32>::generated);
+    let _ = pretty_name::of_method!(<Owner<u32>>::generated);
 }

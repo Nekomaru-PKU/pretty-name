@@ -35,25 +35,19 @@ fn bounded_owner_name<T: Named>() {
     let _ = pretty_name::of_method!(T::trait_method);
 }
 
-/// A generic enum used to validate every `Self` variant shape.
+/// A generic enum used to validate both supported `Self` variant categories.
 enum Choice<T> {
     /// A unit variant referenced through `Self`.
     Unit,
     /// A tuple variant referenced through `Self`.
     Tuple(T),
-    /// A struct variant referenced through `Self`.
-    Struct {
-        /// A payload that makes the struct variant non-empty.
-        value: T,
-    },
 }
 
 impl<T> Choice<T> {
-    /// Exercises every supported variant shape through `Self`.
+    /// Exercises unit and tuple variant constructors through `Self`.
     fn names() {
         let _ = pretty_name::of_variant!(Self::Unit);
-        let _ = pretty_name::of_variant!(Self::Tuple(..));
-        let _ = pretty_name::of_variant!(Self::Struct { value, .. });
+        let _ = pretty_name::of_variant!(Self::Tuple);
     }
 }
 

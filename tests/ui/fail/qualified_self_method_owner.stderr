@@ -1,7 +1,7 @@
 error: expected `Owner::method` or `<qualified::Owner<Args>>::method`, optionally followed by explicit type arguments
-  --> tests/ui/fail/method_const_argument.rs:11:13
+  --> tests/ui/fail/qualified_self_method_owner.rs:17:13
    |
-11 |     let _ = pretty_name::of_method!(Owner::const_generic::<16>);
-   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+17 |     let _ = pretty_name::of_method!(<<T as HasOwner>::Owner>::method);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = note: this error originates in the macro `pretty_name::of_method` (in Nightly builds, run with -Z macro-backtrace for more info)
