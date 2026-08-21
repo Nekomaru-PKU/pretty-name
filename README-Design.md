@@ -1,19 +1,8 @@
-# Design: Verified Diagnostic Names
+# Behind `pretty-name`: Principles & Trade-offs
 
 This document records the principles and trade-offs behind `pretty-name`. Public API
 documentation and tests define the supported interface and exact behavior; this document
 explains why that interface is shaped as it is.
-
-## Documentation principles
-
-Design and public documentation follow these additional rules:
-
-1. Avoid tables with three or more columns. Prose, focused lists, and paired examples are
-   easier to read when a design has caveats or asymmetrical cases.
-2. Public documentation demonstrates supported use. Inputs which happen to compile but do
-   not express the intended semantics are recorded here instead of advertised as API forms.
-3. Avoid side effects in naming operations. Any unavoidable side effect must be documented
-   where users choose the operation and in this design document.
 
 ## Purpose
 
@@ -32,6 +21,9 @@ module imports retain the lexical spelling written at the call site.
 
 Names are diagnostic presentation rather than unique or stable identities. They must not be
 used as serialization keys.
+
+Public documentation demonstrates supported use. Inputs which happen to compile but do
+not express the intended semantics are recorded here instead of advertised as API forms.
 
 ## Public value model
 
