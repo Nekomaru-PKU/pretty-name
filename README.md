@@ -8,7 +8,7 @@ Get the human-friendly name of types, functions, methods, fields, and enum varia
 
 ## Overview
 
-`pretty-name` provides macros and functions for extracting readable names of Rust language constructs. Every naming operation returns an opaque value exposing only `Display`; the concrete representation is private. Unlike `stringify!` or `std::any::type_name`, this crate offers:
+`pretty-name` provides macros and functions for extracting readable names of Rust language constructs. Every naming operation produces a value implementing `Display`; concrete return types are implementation details rather than part of the documented compatibility contract. Unlike `stringify!` or `std::any::type_name`, this crate offers:
 
 ### Key Features
 
@@ -22,7 +22,7 @@ Get the human-friendly name of types, functions, methods, fields, and enum varia
 
 - **Catch typos at compile time**: Every referenced item is validated. Misspelled identifiers, fields, methods, or variants trigger compile errors instead of runtime failures.
 
-- **A deliberately narrow value API**: Name values expose `Display` without exposing their concrete type, representation, or unrelated traits such as `Debug`.
+- **A deliberately narrow value contract**: Name values support `Display`; their concrete types, representations, and additional traits may vary.
 
 - **Natural, idiomatic syntax**: All syntax follows Rust conventions as closely as possible, making the macros feel like native language features.
 
@@ -45,8 +45,8 @@ cargo add pretty-name
 
 ## Usage
 
-Naming operations return opaque `Display` values. They can be formatted with `{}`, passed
-through `impl Display` APIs, or explicitly materialized with `.to_string()`.
+Naming operations produce `Display` values. They can be formatted with `{}`, passed through
+`impl Display` APIs, or explicitly materialized with `.to_string()`.
 
 ```rust
 use pretty_name::*;
@@ -90,6 +90,11 @@ assert_eq!(type_name::<Option<u32>>().to_string(), "Option<u32>");
 assert_eq!(type_name_of_val(&local_value).to_string(), "i32");
 ```
 
+The public, doc-hidden `pretty_name::__` module contains the formatting wrappers used by
+exported macros. Advanced callers may use `TypeName` and `ItemName` directly as formatting
+primitives, including to simplify compiler-style type descriptions, but the module is
+intentionally unstable and excluded from compatibility guarantees.
+
 The four macros use distinct resolution modes:
 
 1. `nameof!` names an ordinary value path, including bindings, constants, statics, and
@@ -124,9 +129,9 @@ Additional behavior and boundaries:
 9. Macro-generated validation locally allows warnings so a downstream `deny(warnings)`
    policy does not turn incidental validation warnings, including deprecation, into errors.
    Syntax, resolution, and type errors remain compiler errors.
-10. Constructing a name with generic arguments may allocate its argument slice.
-    Formatting a type may allocate while parsing and rendering it, and writes through
-    the caller-provided formatter.
+10. Constructing a name does not allocate; explicit generic arguments are stored in a
+    fixed-size array. Formatting a type may allocate while parsing and rendering it, and
+    writes through the caller-provided formatter.
 11. Type names are diagnostic presentation. Rust does not guarantee that compiler type
     names are unique or stable between compiler versions, so they are unsuitable as
     persistent identifiers or serialization keys.

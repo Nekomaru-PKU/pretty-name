@@ -8,7 +8,7 @@ use std::fmt;
 ///
 /// The contents of this module are subject to change without notice, and any code
 /// that depends on them is likely to break.
-#[path ="impl.rs"]
+#[path = "impl.rs"]
 #[doc(hidden)]
 pub mod __;
 
@@ -228,7 +228,7 @@ macro_rules! nameof_field {
             let _ = |obj: $owner| { let _ = &obj.$field; };
             $crate::__::ItemName {
                 owner: ::core::option::Option::Some(
-                    $crate::__resolved_type_name::<$owner>()),
+                    ::core::any::type_name::<$owner>()),
                 path: stringify!($field),
                 args: [],
             }
@@ -299,7 +299,7 @@ macro_rules! nameof_member {
             let _ = || <$owner>::$member;
             $crate::__::ItemName {
                 owner: ::core::option::Option::Some(
-                    $crate::__resolved_type_name::<$owner>()),
+                    ::core::any::type_name::<$owner>()),
                 path: stringify!($member),
                 args: [],
             }
@@ -310,7 +310,7 @@ macro_rules! nameof_member {
             let _ = || <$owner>::$member::<$($arg),*>;
             $crate::__::ItemName {
                 owner: ::core::option::Option::Some(
-                    $crate::__resolved_type_name::<$owner>()),
+                    ::core::any::type_name::<$owner>()),
                 path: stringify!($member),
                 args: [$($crate::__::TypeName(::core::any::type_name::<$arg>())),*],
             }

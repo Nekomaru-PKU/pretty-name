@@ -32,20 +32,21 @@ fn macro_names_support_the_display_contract() {
     assert_eq!(local_value, 42);
 }
 
-/// Verifies every macro category returns the same erased concrete type.
+/// Verifies every macro category supports the documented `Display` contract without
+/// requiring shared concrete-type identity.
 #[test]
-fn all_macro_categories_share_one_opaque_type() {
+fn all_macro_categories_support_the_display_contract() {
     let owner = Owner { field: 42 };
     owner.method();
     let names = [
-        pretty_name::nameof!(generic::<u32>),
-        pretty_name::nameof_type!(u32),
-        pretty_name::nameof_field!(Owner::field),
-        pretty_name::nameof_member!(Owner::method),
+        pretty_name::nameof!(generic::<u32>).to_string(),
+        pretty_name::nameof_type!(u32).to_string(),
+        pretty_name::nameof_field!(Owner::field).to_string(),
+        pretty_name::nameof_member!(Owner::method).to_string(),
     ];
 
     assert_eq!(
-        names.map(|name| name.to_string()),
+        names,
         ["generic<u32>", "u32", "Owner::field", "Owner::method"]);
     assert_eq!(owner.field, 42);
 }

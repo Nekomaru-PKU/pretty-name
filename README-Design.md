@@ -35,28 +35,26 @@ used as serialization keys.
 
 ## Public value model
 
-Every operation returns `impl Display`, and the concrete `PrettyName` type is private. The four
-macros call one hidden construction bridge and therefore share one opaque result type. Public
-functions use the same trait contract without promising concrete-type identity across
-different functions.
+Every operation produces a value implementing `Display`. The documented compatibility
+contract covers that formatting behavior, not concrete type identity, representation, or
+additional traits. Macro categories and generic arities may therefore produce different
+concrete types even when callers handle all of them through `impl Display`.
 
-The private representation has two cases:
+The implementation currently uses two wrapper families:
 
-1. A type stores one compiler-resolved type description.
-2. An item stores an optional resolved owner type, one compiler-validated lexical source
-   path, and zero or more resolved generic argument types.
+1. `TypeName` stores one compiler-resolved or caller-provided type description.
+2. `ItemName<N>` stores an optional resolved owner type, one compiler-validated lexical
+   source path, and an inline array of `N` resolved generic argument types.
 
-`PrettyName` implements `Display` and formats its semantic components on demand. It does not
-implement `Debug`; callers receive no public promise beyond `Display`. A caller can keep an
-inferred local value, accept or return it through `impl Display`, or explicitly materialize a
-`String` with `ToString`.
+Both wrappers implement `Display` and format their semantic components on demand. A caller
+can keep an inferred local value, accept or return it through `impl Display`, or explicitly
+materialize a `String` with `ToString`.
 
-The type and its fields remain private. Documented functions and macros are the supported
-construction interface. One public `#[doc(hidden)]` bridge accepts only public representation
-data, constructs `PrettyName` inside the crate, and returns `impl Display`; exported macros
-need that bridge to cross a downstream crate's privacy boundary. Other hidden helpers expose
-compiler type descriptions to macro expansion. None are supported constructors or extension
-points.
+The wrappers live in the public, `#[doc(hidden)]` `__` module because exported macros must
+construct them from downstream crates. Advanced callers may also use them directly as
+formatting primitives, including for arbitrary compiler-style type descriptions. This is an
+informal escape hatch rather than a compatibility promise: the concrete types, fields,
+constructors, layouts, and additional traits may change without notice.
 
 ## Information sources
 
@@ -234,22 +232,21 @@ closure body never runs:
 
 Some implementation effects are unavoidable and are part of the contract:
 
-1. Constructing a name with non-empty generic arguments allocates its boxed argument slice.
-2. Formatting a type may allocate while parsing, transforming, and rendering its syntax.
-3. `Display` writes to the caller-provided formatter, so destination-specific write behavior
+1. Formatting a type may allocate while parsing, transforming, and rendering its syntax.
+2. `Display` writes to the caller-provided formatter, so destination-specific write behavior
    and formatting errors remain observable.
-4. Allocation failure follows Rust's ordinary allocator-failure behavior.
+3. Allocation failure during formatting follows Rust's ordinary allocator-failure behavior.
 
 Any future operation that must execute user code or introduce another side effect requires
 explicit documentation both here and on the relevant public API.
 
 ## Ownership, safety, and cost model
 
-Resolved compiler descriptions and source paths have `'static` lifetimes. The private
-item representation owns its variable-length generic argument list as `Box<[&'static str]>`.
-This direct representation avoids one allocation and one pointer indirection compared with
-boxing the entire private enum while keeping each returned name lifetime-independent and
-arity-independent.
+Resolved compiler descriptions and source paths have `'static` lifetimes. `ItemName<N>` owns
+its generic arguments inline as `[TypeName; N]`, where macro expansion infers `N` from the
+number of explicit arguments. Construction therefore avoids allocation and indirection. The
+trade-off is that concrete type identity and value size vary with arity, which is acceptable
+because neither is part of the documented value contract.
 
 `type_name_of_val` uses precise return-type capture to exclude the borrow lifetime from its
 opaque result. The name can therefore outlive the value used to discover its type without
@@ -261,8 +258,8 @@ The implementation follows these constraints:
 2. Strings are not leaked to manufacture `'static` results.
 3. The implementation uses no `unsafe` code. Introducing it requires a separate safety
    argument and documented invariants.
-4. Constructing a non-generic name does not allocate.
-5. Constructing a generic item name may allocate its argument slice.
+4. Constructing a name does not allocate.
+5. An item name's inline storage grows linearly with its explicit generic arity.
 6. Formatting a type may allocate; repeated formatting may repeat parsing and rendering work.
 
 These costs favor a clear semantic representation and grammar-aware correctness. Performance
@@ -286,12 +283,15 @@ measurements, but they do not justify a weaker parser or partial transformation.
 
 ## Extension boundaries
 
-The public API stays focused on readable diagnostic presentation:
+The documented naming API stays focused on readable diagnostic presentation:
 
-1. The opaque name API does not expose `PrettyName`, raw strings, semantic components, string
-   comparison, or construction from arbitrary strings.
-2. The crate does not define a public name trait because `Display` and `ToString` cover the
+1. Functions and macros promise formatting behavior through `Display`, not raw string access,
+   semantic component access, or concrete type identity.
+2. The doc-hidden `__` module deliberately exposes unstable formatting primitives and permits
+   construction from arbitrary `'static` descriptions without extending compatibility
+   guarantees to those shapes.
+3. The crate does not define a public name trait because `Display` and `ToString` cover the
    shared behavior.
-3. Display qualification is fixed; callers cannot treat shortened output as a unique identity.
-4. Caching is an application-level composition choice and cannot change validation semantics.
-5. Additional macro forms must retain complete rustc validation and resolved type components.
+4. Display qualification is fixed; callers cannot treat shortened output as a unique identity.
+5. Caching is an application-level composition choice and cannot change validation semantics.
+6. Additional macro forms must retain complete rustc validation and resolved type components.

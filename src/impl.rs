@@ -6,7 +6,13 @@ use quote::quote;
 use syn::*;
 use syn::visit_mut::VisitMut;
 
-pub struct TypeName(pub &'static str);
+/// A display wrapper that structurally shortens one Rust type description.
+///
+/// This type belongs to the doc-hidden implementation API. Its representation and
+/// additional trait implementations may change without notice.
+pub struct TypeName(
+    /// The compiler-produced or caller-provided type description to format.
+    pub &'static str);
 
 impl fmt::Display for TypeName {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -14,6 +20,11 @@ impl fmt::Display for TypeName {
     }
 }
 
+/// A composed source path with an optional resolved owner and fixed argument list.
+///
+/// The const generic records the number of explicit type arguments inline, avoiding
+/// allocation during construction. This type belongs to the doc-hidden implementation
+/// API and carries no compatibility guarantee.
 pub struct ItemName<const N: usize> {
     /// The compiler-resolved owner of a member or field.
     pub owner: Option<&'static str>,

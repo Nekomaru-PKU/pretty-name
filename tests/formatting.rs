@@ -1,7 +1,9 @@
+//! Direct formatter coverage for the intentionally unstable `pretty_name::__` wrappers.
+
 use std::{any, fmt};
 use std::fmt::Write as _;
 
-use super::{__item_name, PrettyName};
+use pretty_name::__::{ItemName, TypeName};
 
 /// An owner used to verify compound member formatting.
 struct Owner;
@@ -17,21 +19,28 @@ impl fmt::Write for RefusingWriter {
 #[test]
 fn item_display_preserves_lexical_source_path() {
     assert_eq!(
-        __item_name(None, "module::local_value", Box::new([])).to_string(),
+        ItemName { owner: None, path: "module::local_value", args: [] }.to_string(),
         "module::local_value");
 }
 
 /// Verifies functions without arguments omit generic punctuation.
 #[test]
 fn function_display_omits_empty_arguments() {
-    assert_eq!(__item_name(None, "function", Box::new([])).to_string(), "function");
+    assert_eq!(
+        ItemName { owner: None, path: "function", args: [] }.to_string(),
+        "function");
 }
 
 /// Verifies a single function argument uses the compact function-name grammar.
 #[test]
 fn function_display_formats_one_argument() {
     assert_eq!(
-        __item_name(None, "function", Box::new([any::type_name::<u32>()])).to_string(),
+        ItemName {
+            owner: None,
+            path: "function",
+            args: [TypeName(any::type_name::<u32>())],
+        }
+        .to_string(),
         "function<u32>");
 }
 
@@ -40,12 +49,13 @@ fn function_display_formats_one_argument() {
 #[test]
 fn function_display_formats_many_arguments() {
     assert_eq!(
-        __item_name(
-            None,
-            "function",
-            Box::new([
-                any::type_name::<std::vec::Vec<u8>>(),
-                any::type_name::<String>()]))
+        ItemName {
+            owner: None,
+            path: "function",
+            args: [
+                TypeName(any::type_name::<std::vec::Vec<u8>>()),
+                TypeName(any::type_name::<String>())],
+        }
         .to_string(),
         "function<Vec<u8>, String>");
 }
@@ -54,10 +64,12 @@ fn function_display_formats_many_arguments() {
 #[test]
 fn member_display_formats_resolved_owner() {
     assert_eq!(
-        __item_name(
-            Some(any::type_name::<Owner>()),
-            "field",
-            Box::new([])).to_string(),
+        ItemName {
+            owner: Some(any::type_name::<Owner>()),
+            path: "field",
+            args: [],
+        }
+        .to_string(),
         "Owner::field");
 }
 
@@ -65,10 +77,11 @@ fn member_display_formats_resolved_owner() {
 #[test]
 fn member_display_formats_arguments() {
     assert_eq!(
-        __item_name(
-            Some(any::type_name::<Owner>()),
-            "method",
-            Box::new([any::type_name::<String>()]))
+        ItemName {
+            owner: Some(any::type_name::<Owner>()),
+            path: "method",
+            args: [TypeName(any::type_name::<String>())],
+        }
         .to_string(),
         "Owner::method<String>");
 }
@@ -76,14 +89,14 @@ fn member_display_formats_arguments() {
 /// Verifies a plain qualified path loses only its module qualification.
 #[test]
 fn display_shortens_a_plain_qualified_path() {
-    assert_eq!(PrettyName::from_type_description("crate::model::Record").to_string(), "Record");
+    assert_eq!(TypeName("crate::model::Record").to_string(), "Record");
 }
 
 /// Verifies nested generic arguments are transformed recursively.
 #[test]
 fn display_shortens_nested_qualified_paths() {
     assert_eq!(
-        PrettyName::from_type_description(
+        TypeName(
             "std::collections::HashMap<std::string::String, crate::model::Record>")
         .to_string(),
         "HashMap<String, Record>");
@@ -92,17 +105,13 @@ fn display_shortens_nested_qualified_paths() {
 /// Verifies leading global qualification is removed with module qualification.
 #[test]
 fn display_removes_a_leading_global_qualifier() {
-    assert_eq!(
-        PrettyName::from_type_description("::crate_name::Record").to_string(),
-        "Record");
+    assert_eq!(TypeName("::crate_name::Record").to_string(), "Record");
 }
 
 /// Verifies compiler-emitted lifetimes survive qualification removal.
 #[test]
 fn display_preserves_reference_lifetimes() {
-    assert_eq!(
-        PrettyName::from_type_description("&'named crate::model::Record").to_string(),
-        "&'named Record");
+    assert_eq!(TypeName("&'named crate::model::Record").to_string(), "&'named Record");
 }
 
 /// Verifies qualified-self projections retain their owner, trait, and associated type
@@ -110,8 +119,7 @@ fn display_preserves_reference_lifetimes() {
 #[test]
 fn display_preserves_qualified_self_projections() {
     assert_eq!(
-        PrettyName::from_type_description(
-            "<crate::model::Record as crate::traits::HasItem>::Item").to_string(),
+        TypeName("<crate::model::Record as crate::traits::HasItem>::Item").to_string(),
         "<Record as HasItem>::Item");
 }
 
@@ -119,8 +127,7 @@ fn display_preserves_qualified_self_projections() {
 #[test]
 fn display_shortens_associated_type_constraints() {
     assert_eq!(
-        PrettyName::from_type_description(
-            "dyn crate::traits::Outer<Item: crate::fmt::Display>").to_string(),
+        TypeName("dyn crate::traits::Outer<Item: crate::fmt::Display>").to_string(),
         "dyn Outer<Item: Display>");
 }
 
@@ -129,13 +136,13 @@ fn display_shortens_associated_type_constraints() {
 fn display_preserves_unparseable_descriptions() {
     let description = "crate::module::{closure@src/lib.rs:1:1}";
 
-    assert_eq!(PrettyName::from_type_description(description).to_string(), description);
+    assert_eq!(TypeName(description).to_string(), description);
 }
 
 /// Verifies empty unknown input is preserved rather than panicking or inventing a name.
 #[test]
 fn display_preserves_an_empty_description() {
-    assert_eq!(PrettyName::from_type_description("").to_string(), "");
+    assert_eq!(TypeName("").to_string(), "");
 }
 
 /// Verifies malformed generic input is preserved byte-for-byte.
@@ -143,7 +150,7 @@ fn display_preserves_an_empty_description() {
 fn display_preserves_an_unclosed_generic_description() {
     let description = "crate::module::Wrapper<crate::model::Record";
 
-    assert_eq!(PrettyName::from_type_description(description).to_string(), description);
+    assert_eq!(TypeName(description).to_string(), description);
 }
 
 /// Verifies macro type tokens trigger whole-description fallback because Syn does not
@@ -152,7 +159,7 @@ fn display_preserves_an_unclosed_generic_description() {
 fn display_preserves_macro_types_without_partial_shortening() {
     let description = "crate::types::Wrapper<crate::type_macro!(crate::model::Record)>";
 
-    assert_eq!(PrettyName::from_type_description(description).to_string(), description);
+    assert_eq!(TypeName(description).to_string(), description);
 }
 
 /// Verifies macro const expressions trigger whole-description fallback for the same
@@ -161,7 +168,7 @@ fn display_preserves_macro_types_without_partial_shortening() {
 fn display_preserves_macro_const_arguments_without_partial_shortening() {
     let description = "crate::types::Buffer<{ crate::length!() }>";
 
-    assert_eq!(PrettyName::from_type_description(description).to_string(), description);
+    assert_eq!(TypeName(description).to_string(), description);
 }
 
 /// Verifies destination failures remain ordinary formatting errors after parsing and
@@ -173,5 +180,5 @@ fn display_propagates_destination_errors() {
     assert!(write!(
         &mut writer,
         "{}",
-        PrettyName::from_type_description("crate::model::Record")).is_err());
+        TypeName("crate::model::Record")).is_err());
 }
