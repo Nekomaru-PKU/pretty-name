@@ -1,74 +1,25 @@
 #![doc = include_str!("../README.md")]
 
-use std::borrow::Cow;
-
 use std::any;
 use std::fmt;
 
-use quote::quote;
-use syn::*;
-use syn::visit_mut::VisitMut;
-
-/// The private representation behind the crate's opaque [`Display`](fmt::Display)
-/// values.
+/// Private implementation details. It **MUST NOT** be considered a stable public
+/// interface and should not be used outside of this crate.
 ///
-/// A name contains either one compiler-resolved type description or a validated source
-/// path with an optional resolved owner and explicit generic type arguments. Keeping
-/// the type private prevents diagnostic presentation from becoming an identity or
-/// reflection API by accident.
-struct PrettyName(PrettyNameRepresentation);
-
-/// The private semantic components used to format one [`PrettyName`].
-enum PrettyNameRepresentation {
-    /// One complete compiler-resolved type description.
-    Type(&'static str),
-    /// A validated source path and its optional resolved type owner and arguments.
-    Item {
-        /// The compiler-resolved owner of a member or field.
-        owner: Option<&'static str>,
-        /// The lexical source path captured after compiler validation.
-        source_path: &'static str,
-        /// Compiler-resolved generic type arguments in source order.
-        args: Box<[&'static str]>,
-    },
-}
-
-impl PrettyName {
-    /// Constructs an arbitrary resolved-type representation for focused formatter tests.
-    #[cfg(test)]
-    fn from_type_description(description: &'static str) -> Self {
-        PrettyName(PrettyNameRepresentation::Type(description))
-    }
-}
-
-impl fmt::Display for PrettyName {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.0 {
-            PrettyNameRepresentation::Type(description) => {
-                write_type_description(description, formatter)
-            }
-            PrettyNameRepresentation::Item {
-                owner,
-                source_path,
-                args,
-            } => {
-                if let Some(owner) = owner {
-                    write_type_description(owner, formatter)?;
-                    formatter.write_str("::")?;
-                }
-                formatter.write_str(source_path)?;
-                write_generic_arguments(args, formatter)
-            }
-        }
-    }
-}
+/// The contents of this module are subject to change without notice, and any code
+/// that depends on them is likely to break.
+#[path ="impl.rs"]
+#[doc(hidden)]
+pub mod __;
 
 /// Gets a diagnostic name for the compiler-resolved type `T`.
 ///
 /// Formatting removes module qualification from parseable Rust type paths while
 /// preserving the remaining type structure. Compiler descriptions outside the
-/// supported grammar are displayed unchanged. The return type intentionally exposes
-/// only [`Display`](fmt::Display).
+/// supported grammar are displayed unchanged.
+///
+/// Returns an opaque wrapper that implements [`Display`](fmt::Display) and may
+/// outlive `T`.
 ///
 /// # Examples
 ///
@@ -79,16 +30,21 @@ impl fmt::Display for PrettyName {
 /// assert_eq!(type_name::<Option<i32>>().to_string(), "Option<i32>");
 /// assert_eq!(type_name::<Vec<Box<dyn std::fmt::Debug>>>().to_string(), "Vec<Box<dyn Debug>>");
 /// ```
-pub fn type_name<T: ?Sized>() -> impl fmt::Display + use<T> {
-    PrettyName(PrettyNameRepresentation::Type(any::type_name::<T>()))
+pub fn type_name<T: ?Sized>() -> impl 'static + fmt::Display {
+    crate::__::TypeName(any::type_name::<T>())
 }
 
 /// Gets a diagnostic name for the compiler-resolved type of `value`.
 ///
-/// Passing a reference inspects the referenced value's type rather than adding another
-/// reference layer to the description. The returned name does not retain the borrow and
-/// may outlive `value`; its opaque type intentionally exposes only
-/// [`Display`](fmt::Display).
+/// Formatting removes module qualification from parseable Rust type paths while
+/// preserving the remaining type structure. Compiler descriptions outside the
+/// supported grammar are displayed unchanged.
+///
+/// Passing a reference inspects the referenced value's type rather than adding
+/// another reference layer to the description.
+///
+/// Returns an opaque wrapper that implements [`Display`](fmt::Display) and may
+/// outlive `T`.
 ///
 /// # Examples
 ///
@@ -99,12 +55,8 @@ pub fn type_name<T: ?Sized>() -> impl fmt::Display + use<T> {
 /// assert_eq!(type_name_of_val(&value).to_string(), "Vec<i32>");
 /// assert_eq!(type_name_of_val(&value.as_slice()).to_string(), "&[i32]");
 /// ```
-#[expect(
-    clippy::needless_lifetimes,
-    reason = "the named input lifetime makes its exclusion from `use<T>` explicit")]
-pub fn type_name_of_val<'value, T: ?Sized>(
-    value: &'value T) -> impl fmt::Display + use<T> {
-    PrettyName(PrettyNameRepresentation::Type(any::type_name_of_val(value)))
+pub fn type_name_of_val<T: ?Sized>(value: &T) -> impl fmt::Display + use<T> {
+    crate::__::TypeName(any::type_name_of_val(value))
 }
 
 /// Gets the validated lexical path of an ordinary value.
@@ -139,90 +91,73 @@ pub fn type_name_of_val<'value, T: ?Sized>(
 #[macro_export]
 macro_rules! nameof {
     ($ident:ident) => {{
-        #[allow(
-            warnings,
-            reason = "macro-generated validation must not inherit downstream warning policy")]
-        {
+        #[allow(warnings, reason = "macro-generated")] {
             let _ = || { let _ = &$ident; };
-            $crate::__make_name(
-                ::core::option::Option::None,
-                ::core::option::Option::None,
-                stringify!($ident),
-                ::std::boxed::Box::new([]))
+            $crate::__::ItemName {
+                owner: ::core::option::Option::None,
+                path: stringify!($ident),
+                args: [],
+            }
         }
     }};
     ($ident:ident ::<$($arg:ty),+ $(,)?>) => {{
-        #[allow(
-            warnings,
-            reason = "macro-generated validation must not inherit downstream warning policy")]
-        {
+        #[allow(warnings, reason = "macro-generated")] {
             let _ = || { let _ = &$ident::<$($arg),*>; };
-            $crate::__make_name(
-                ::core::option::Option::None,
-                ::core::option::Option::None,
-                stringify!($ident),
-                ::std::boxed::Box::new([$($crate::__resolved_type_name::<$arg>()),*]))
+            $crate::__::ItemName {
+                owner: ::core::option::Option::None,
+                path: stringify!($ident),
+                args: [$($crate::__::TypeName(::core::any::type_name::<$arg>())),*],
+            }
         }
     }};
     ($head:ident :: $($tail:ident)::+ ::<$($arg:ty),+ $(,)?>) => {{
-        #[allow(
-            warnings,
-            reason = "macro-generated validation must not inherit downstream warning policy")]
-        {
+        #[allow(warnings, reason = "macro-generated")] {
             use $head::$($tail)::+ as _;
             let _ = || { let _ = &$head::$($tail)::+::<$($arg),*>; };
-            $crate::__make_name(
-                ::core::option::Option::None,
-                ::core::option::Option::None,
-                concat!(stringify!($head), $("::", stringify!($tail)),+),
-                ::std::boxed::Box::new([$($crate::__resolved_type_name::<$arg>()),*]))
+            $crate::__::ItemName {
+                owner: ::core::option::Option::None,
+                path: concat!(stringify!($head), $("::", stringify!($tail)),+),
+                args: [$($crate::__::TypeName(::core::any::type_name::<$arg>())),*],
+            }
         }
     }};
     (:: $head:ident :: $($tail:ident)::+ ::<$($arg:ty),+ $(,)?>) => {{
-        #[allow(
-            warnings,
-            reason = "macro-generated validation must not inherit downstream warning policy")]
-        {
+        #[allow(warnings, reason = "macro-generated")] {
             use ::$head::$($tail)::+ as _;
             let _ = || { let _ = &::$head::$($tail)::+::<$($arg),*>; };
-            $crate::__make_name(
-                ::core::option::Option::None,
-                ::core::option::Option::None,
-                concat!("::", stringify!($head), $("::", stringify!($tail)),+),
-                ::std::boxed::Box::new([$($crate::__resolved_type_name::<$arg>()),*]))
+            $crate::__::ItemName {
+                owner: ::core::option::Option::None,
+                path: concat!("::", stringify!($head), $("::", stringify!($tail)),+),
+                args: [$($crate::__::TypeName(::core::any::type_name::<$arg>())),*],
+            }
         }
     }};
     ($head:ident :: $($tail:ident)::+) => {{
-        #[allow(
-            warnings,
-            reason = "macro-generated validation must not inherit downstream warning policy")]
-        {
+        #[allow(warnings, reason = "macro-generated")] {
             use $head::$($tail)::+ as _;
             let _ = || { let _ = &$head::$($tail)::+; };
-            $crate::__make_name(
-                ::core::option::Option::None,
-                ::core::option::Option::None,
-                concat!(stringify!($head), $("::", stringify!($tail)),+),
-                ::std::boxed::Box::new([]))
+            $crate::__::ItemName {
+                owner: ::core::option::Option::None,
+                path: concat!(stringify!($head), $("::", stringify!($tail)),+),
+                args: [],
+            }
         }
     }};
     (:: $head:ident :: $($tail:ident)::+) => {{
-        #[allow(
-            warnings,
-            reason = "macro-generated validation must not inherit downstream warning policy")]
-        {
+        #[allow(warnings, reason = "macro-generated")] {
             use ::$head::$($tail)::+ as _;
             let _ = || { let _ = &::$head::$($tail)::+; };
-            $crate::__make_name(
-                ::core::option::Option::None,
-                ::core::option::Option::None,
-                concat!("::", stringify!($head), $("::", stringify!($tail)),+),
-                ::std::boxed::Box::new([]))
+            $crate::__::ItemName {
+                owner: ::core::option::Option::None,
+                path: concat!("::", stringify!($head), $("::", stringify!($tail)),+),
+                args: [],
+            }
         }
     }};
     ($($invalid:tt)*) => {
-        compile_error!(
-            "expected an ordinary value path, optionally followed by explicit type arguments")
+        compile_error!(concat!(
+            "expected an ordinary value path, ",
+            "optionally followed by explicit type arguments"))
     };
 }
 
@@ -247,20 +182,11 @@ macro_rules! nameof {
 /// let _ = pretty_name::nameof_type!(DefinitelyNotAType);
 /// ```
 #[macro_export]
-macro_rules! nameof_type {
-    ($ty:ty) => {{
-        #[allow(
-            warnings,
-            reason = "macro-generated validation must not inherit downstream warning policy")]
-        {
-            $crate::__make_name(
-                ::core::option::Option::Some($crate::__resolved_type_name::<$ty>()),
-                ::core::option::Option::None,
-                "",
-                ::std::boxed::Box::new([]))
-        }
-    }};
-}
+macro_rules! nameof_type(($ty:ty) => {{
+    #[allow(warnings, reason = "macro-generated")] {
+        $crate::__::TypeName(::core::any::type_name::<$ty>())
+    }
+}});
 
 /// Gets a validated field name with its compiler-resolved owner.
 ///
@@ -298,16 +224,14 @@ macro_rules! nameof_field {
         $crate::nameof_field!(<$owner>::$field)
     };
     (<$owner:path> :: $field:ident) => {{
-        #[allow(
-            warnings,
-            reason = "macro-generated validation must not inherit downstream warning policy")]
-        {
+        #[allow(warnings, reason = "macro-generated")] {
             let _ = |obj: $owner| { let _ = &obj.$field; };
-            $crate::__make_name(
-                ::core::option::Option::None,
-                ::core::option::Option::Some($crate::__resolved_type_name::<$owner>()),
-                stringify!($field),
-                ::std::boxed::Box::new([]))
+            $crate::__::ItemName {
+                owner: ::core::option::Option::Some(
+                    $crate::__resolved_type_name::<$owner>()),
+                path: stringify!($field),
+                args: [],
+            }
         }
     }};
     ($($invalid:tt)*) => {
@@ -371,240 +295,29 @@ macro_rules! nameof_member {
         $crate::nameof_member!(<$owner>::$member::<$($arg),*>)
     };
     (<$owner:path> :: $member:ident) => {{
-        #[allow(
-            warnings,
-            reason = "macro-generated validation must not inherit downstream warning policy")]
-        {
+        #[allow(warnings, reason = "macro-generated")] {
             let _ = || <$owner>::$member;
-            $crate::__make_name(
-                ::core::option::Option::None,
-                ::core::option::Option::Some($crate::__resolved_type_name::<$owner>()),
-                stringify!($member),
-                ::std::boxed::Box::new([]))
+            $crate::__::ItemName {
+                owner: ::core::option::Option::Some(
+                    $crate::__resolved_type_name::<$owner>()),
+                path: stringify!($member),
+                args: [],
+            }
         }
     }};
     (<$owner:path> :: $member:ident ::<$($arg:ty),+ $(,)?>) => {{
-        #[allow(
-            warnings,
-            reason = "macro-generated validation must not inherit downstream warning policy")]
-        {
+        #[allow(warnings, reason = "macro-generated")] {
             let _ = || <$owner>::$member::<$($arg),*>;
-            $crate::__make_name(
-                ::core::option::Option::None,
-                ::core::option::Option::Some($crate::__resolved_type_name::<$owner>()),
-                stringify!($member),
-                ::std::boxed::Box::new([$($crate::__resolved_type_name::<$arg>()),*]))
+            $crate::__::ItemName {
+                owner: ::core::option::Option::Some(
+                    $crate::__resolved_type_name::<$owner>()),
+                path: stringify!($member),
+                args: [$($crate::__::TypeName(::core::any::type_name::<$arg>())),*],
+            }
         }
     }};
     ($($invalid:tt)*) => {
-        compile_error!(
-            "expected `Owner::member` or `<path::to::Owner<Args>>::member`, optionally followed by explicit type arguments")
+        compile_error!(concat!(
+            "expected `Owner::member` or `<path::to::Owner<Args>>::member`, ", "optionally followed by explicit type arguments"))
     };
 }
-
-/// Returns the compiler description used to format a resolved type component.
-#[doc(hidden)]
-pub fn __resolved_type_name<T: ?Sized>() -> &'static str {
-    any::type_name::<T>()
-}
-
-/// Constructs and erases a name after an exported macro validates its source input.
-///
-/// This function is public only so exported macros can use it from downstream crates;
-/// it is not a supported construction API. A present `resolved_type` selects the type
-/// representation; otherwise `owner`, `source_path`, and `args` select the item
-/// representation. The latter inputs are deliberately ignored for a type name so
-/// malformed direct calls cannot corrupt formatting state.
-#[doc(hidden)]
-pub fn __make_name(
-    resolved_type: Option<&'static str>,
-    owner: Option<&'static str>,
-    source_path: &'static str,
-    args: Box<[&'static str]>) -> impl fmt::Display {
-    let representation = match resolved_type {
-        Some(description) => PrettyNameRepresentation::Type(description),
-        None => PrettyNameRepresentation::Item {
-            owner,
-            source_path,
-            args,
-        },
-    };
-    PrettyName(representation)
-}
-
-/// Constructs an item representation for focused formatter tests.
-#[cfg(test)]
-fn __item_name(
-    owner: Option<&'static str>,
-    source_path: &'static str,
-    args: Box<[&'static str]>) -> PrettyName {
-    PrettyName(PrettyNameRepresentation::Item {
-        owner,
-        source_path,
-        args,
-    })
-}
-
-/// Writes one compiler-resolved type description through the structural formatter.
-fn write_type_description(
-    description: &str,
-    formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-    formatter.write_str(prettify_type_name(description).as_ref())
-}
-
-/// Writes a non-empty angle-bracketed argument list.
-///
-/// An empty slice deliberately writes nothing so the same representation serves plain
-/// values, fields, and non-generic members.
-fn write_generic_arguments(
-    args: &[&str],
-    formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-    let Some((first, remaining)) = args.split_first() else {
-        return Ok(());
-    };
-
-    formatter.write_str("<")?;
-    write_type_description(first, formatter)?;
-    for argument in remaining {
-        formatter.write_str(", ")?;
-        write_type_description(argument, formatter)?;
-    }
-    formatter.write_str(">")
-}
-
-/// Produces a shortened type description or borrows the original when transformation
-/// cannot be completed confidently.
-fn prettify_type_name(type_name: &str) -> Cow<'_, str> {
-    let Ok(mut ty) = syn::parse_str::<Type>(type_name) else {
-        return Cow::Borrowed(type_name);
-    };
-
-    let mut shortener = TypeQualificationShortener::default();
-    shortener.visit_type_mut(&mut ty);
-    if shortener.encountered_unparsed_syntax {
-        return Cow::Borrowed(type_name);
-    }
-
-    let Ok(file) = syn::parse2::<File>(quote!(type __PrettyName = #ty;)) else {
-        return Cow::Borrowed(type_name);
-    };
-    let formatted = prettyplease::unparse(&file);
-    let Some(pretty_name) = extract_pretty_type(&formatted) else {
-        return Cow::Borrowed(type_name);
-    };
-
-    Cow::Owned(pretty_name.to_owned())
-}
-
-/// Extracts the right-hand type from the private alias used for pretty-printing.
-///
-/// Whitespace around `=` is deliberately ignored because the pretty-printer may wrap a
-/// deeply nested type onto the next line.
-fn extract_pretty_type(formatted: &str) -> Option<&str> {
-    let (declaration, pretty_name) = formatted.split_once('=')?;
-    if declaration.trim() != "type __PrettyName" {
-        return None;
-    }
-
-    pretty_name.trim().strip_suffix(';')
-}
-
-/// Removes module qualification from type and trait paths reached through Syn's type
-/// grammar.
-#[derive(Default)]
-struct TypeQualificationShortener {
-    /// Records syntax that Syn preserved without interpreting, requiring unchanged
-    /// fallback for the complete compiler description.
-    encountered_unparsed_syntax: bool,
-}
-
-impl VisitMut for TypeQualificationShortener {
-    fn visit_expr_mut(&mut self, expr: &mut Expr) {
-        if matches!(expr, Expr::Macro(_) | Expr::Verbatim(_)) {
-            self.encountered_unparsed_syntax = true;
-            return;
-        }
-
-        visit_mut::visit_expr_mut(self, expr);
-    }
-
-    fn visit_trait_bound_mut(&mut self, bound: &mut TraitBound) {
-        visit_mut::visit_trait_bound_mut(self, bound);
-        if !retain_final_path_segment(&mut bound.path) {
-            self.encountered_unparsed_syntax = true;
-        }
-    }
-
-    fn visit_type_mut(&mut self, ty: &mut Type) {
-        if matches!(ty, Type::Macro(_) | Type::Verbatim(_)) {
-            self.encountered_unparsed_syntax = true;
-            return;
-        }
-
-        visit_mut::visit_type_mut(self, ty);
-    }
-
-    fn visit_type_param_bound_mut(&mut self, bound: &mut TypeParamBound) {
-        if matches!(bound, TypeParamBound::Verbatim(_)) {
-            self.encountered_unparsed_syntax = true;
-            return;
-        }
-
-        visit_mut::visit_type_param_bound_mut(self, bound);
-    }
-
-    fn visit_type_path_mut(&mut self, type_path: &mut TypePath) {
-        visit_mut::visit_type_path_mut(self, type_path);
-        if !shorten_type_path(type_path) {
-            self.encountered_unparsed_syntax = true;
-        }
-    }
-}
-
-/// Shortens a type path while retaining the trait and associated segments of a
-/// qualified-self projection.
-fn shorten_type_path(type_path: &mut TypePath) -> bool {
-    let Some(qself) = type_path.qself.as_mut() else {
-        return retain_final_path_segment(&mut type_path.path);
-    };
-
-    if qself.position == 0 {
-        return !type_path.path.segments.is_empty();
-    }
-
-    let position = qself.position;
-    let mut segments: Vec<_> = std::mem::take(&mut type_path.path.segments)
-        .into_iter()
-        .collect();
-    if position > segments.len() {
-        return false;
-    }
-
-    let associated_segments = segments.split_off(position);
-    let Some(trait_segment) = segments.pop() else {
-        return false;
-    };
-
-    type_path.path.leading_colon = None;
-    type_path.path.segments = std::iter::once(trait_segment)
-        .chain(associated_segments)
-        .collect();
-    qself.position = 1;
-    true
-}
-
-/// Retains a path's final segment after its nested generic arguments have already been
-/// visited.
-fn retain_final_path_segment(path: &mut Path) -> bool {
-    let Some(last_segment) = std::mem::take(&mut path.segments).into_iter().next_back()
-    else {
-        return false;
-    };
-
-    path.leading_colon = None;
-    path.segments = std::iter::once(last_segment).collect();
-    true
-}
-
-#[cfg(test)]
-mod tests;
