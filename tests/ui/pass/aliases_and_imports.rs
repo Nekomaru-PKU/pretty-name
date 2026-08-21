@@ -33,10 +33,10 @@ type ChoiceAlias = fixture::Choice;
 /// Exercises aliases and renamed imports accepted by the public macros.
 fn main() {
     let value = 42;
-    let _ = pretty_name::of_var!(value);
-    let _ = pretty_name::of_function!(renamed_generic::<u32>);
-    let _ = pretty_name::of_type!(OwnerAlias);
-    let _ = pretty_name::of_field!(OwnerAlias::field);
-    let _ = pretty_name::of_method!(OwnerAlias::method);
-    let _ = pretty_name::of_variant!(ChoiceAlias::Unit);
+    let _ = pretty_name::nameof!(value);
+    let _ = pretty_name::nameof!(renamed_generic::<u32>);
+    let _ = pretty_name::nameof_type!(OwnerAlias);
+    let _ = pretty_name::nameof_field!(OwnerAlias::field);
+    let _ = pretty_name::nameof_member!(OwnerAlias::method);
+    let _ = pretty_name::nameof_member!(ChoiceAlias::Unit);
 }

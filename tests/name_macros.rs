@@ -14,13 +14,13 @@ mod fixtures {
     pub fn generic_pair<T, U>() {}
 
     /// Gets the name of [`generic_function`] for the caller's concrete type.
-    pub fn generic_function_name<T>() -> pretty_name::FunctionName {
-        pretty_name::of_function!(generic_function::<T>)
+    pub fn generic_function_name<T>() -> pretty_name::PrettyName {
+        pretty_name::nameof!(generic_function::<T>)
     }
 
     /// Gets the resolved name of a possibly unsized generic type parameter.
-    pub fn generic_type_name<T: ?Sized>() -> pretty_name::TypeName {
-        pretty_name::of_type!(T)
+    pub fn generic_type_name<T: ?Sized>() -> pretty_name::PrettyName {
+        pretty_name::nameof_type!(T)
     }
 
     /// A non-generic owner used to verify literal and `Self`-based macro forms.
@@ -30,6 +30,9 @@ mod fixtures {
     }
 
     impl PlainOwner {
+        /// An associated constant referenced by member-name macros.
+        pub const CONSTANT: u32 = 42;
+
         /// A method referenced by method-name macros.
         pub fn method(&self) {}
 
@@ -37,23 +40,23 @@ mod fixtures {
         pub fn generic_method<T>(&self) {}
 
         /// Gets this owner's type name through `Self`.
-        pub fn self_type_name() -> pretty_name::TypeName {
-            pretty_name::of_type!(Self)
+        pub fn self_type_name() -> pretty_name::PrettyName {
+            pretty_name::nameof_type!(Self)
         }
 
         /// Gets this owner's field name through `Self`.
-        pub fn self_field_name() -> pretty_name::MemberName {
-            pretty_name::of_field!(Self::field)
+        pub fn self_field_name() -> pretty_name::PrettyName {
+            pretty_name::nameof_field!(Self::field)
         }
 
         /// Gets this owner's method name through `Self`.
-        pub fn self_method_name() -> pretty_name::MemberName {
-            pretty_name::of_method!(Self::method)
+        pub fn self_method_name() -> pretty_name::PrettyName {
+            pretty_name::nameof_member!(Self::method)
         }
 
         /// Gets this owner's generic method name through `Self`.
-        pub fn self_generic_method_name<T>() -> pretty_name::MemberName {
-            pretty_name::of_method!(Self::generic_method::<T>)
+        pub fn self_generic_method_name<T>() -> pretty_name::PrettyName {
+            pretty_name::nameof_member!(Self::generic_method::<T>)
         }
     }
 
@@ -68,8 +71,8 @@ mod fixtures {
     }
 
     /// Gets a trait-provided method name through a resolved bounded owner parameter.
-    pub fn trait_method_name<T: Named>() -> pretty_name::MemberName {
-        pretty_name::of_method!(T::trait_method)
+    pub fn trait_method_name<T: Named>() -> pretty_name::PrettyName {
+        pretty_name::nameof_member!(T::trait_method)
     }
 
     /// A generic owner used to verify named-path macro forms.
@@ -92,8 +95,8 @@ mod fixtures {
         pub fn generic_method<U>(&self) {}
 
         /// Gets the method name for this concrete `Self` type.
-        pub fn self_method_name() -> pretty_name::MemberName {
-            pretty_name::of_method!(Self::method)
+        pub fn self_method_name() -> pretty_name::PrettyName {
+            pretty_name::nameof_member!(Self::method)
         }
     }
 
@@ -115,19 +118,34 @@ mod fixtures {
 
     impl<T> GenericEnum<T> {
         /// Gets the unit variant name through `Self`.
-        pub fn self_unit_name() -> pretty_name::MemberName {
-            pretty_name::of_variant!(Self::Unit)
+        pub fn self_unit_name() -> pretty_name::PrettyName {
+            pretty_name::nameof_member!(Self::Unit)
         }
 
         /// Gets the tuple-constructor variant name through `Self`.
-        pub fn self_tuple_name() -> pretty_name::MemberName {
-            pretty_name::of_variant!(Self::Tuple)
+        pub fn self_tuple_name() -> pretty_name::PrettyName {
+            pretty_name::nameof_member!(Self::Tuple)
         }
     }
 }
 
 /// Counts destructor calls caused by constructing [`DroppingEnum`] values.
 static VARIANT_DROP_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+/// Counts user-defined dereferences caused by field validation.
+static FIELD_DEREF_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+/// An owner that makes field-access autoderef observable if validation ever runs.
+struct DerefOwner(PlainOwner);
+
+impl std::ops::Deref for DerefOwner {
+    type Target = PlainOwner;
+
+    fn deref(&self) -> &Self::Target {
+        FIELD_DEREF_COUNT.fetch_add(1, Ordering::Relaxed);
+        &self.0
+    }
+}
 
 /// An enum whose destructor makes accidental variant construction observable.
 enum DroppingEnum {
@@ -165,8 +183,8 @@ fn variable_macro_returns_variable_and_constant_names() {
 
     assert_eq!(
         (
-            pretty_name::of_var!(local_variable).to_string(),
-            pretty_name::of_var!(NAMED_CONSTANT).to_string()),
+            pretty_name::nameof!(local_variable).to_string(),
+            pretty_name::nameof!(NAMED_CONSTANT).to_string()),
         names!("local_variable", "NAMED_CONSTANT"));
 }
 
@@ -174,7 +192,7 @@ fn variable_macro_returns_variable_and_constant_names() {
 #[test]
 fn function_macro_returns_plain_function_name() {
     assert_eq!(
-        pretty_name::of_function!(plain_function).to_string(),
+        pretty_name::nameof!(plain_function).to_string(),
         "plain_function");
 }
 
@@ -182,7 +200,7 @@ fn function_macro_returns_plain_function_name() {
 #[test]
 fn function_macro_formats_explicit_generic_arguments() {
     assert_eq!(
-        pretty_name::of_function!(
+        pretty_name::nameof!(
             generic_pair::<std::vec::Vec<u8>, std::string::String>).to_string(),
         "generic_pair<Vec<u8>, String>");
 }
@@ -191,7 +209,7 @@ fn function_macro_formats_explicit_generic_arguments() {
 #[test]
 fn function_macro_accepts_a_module_qualified_function() {
     assert_eq!(
-        pretty_name::of_function!(fixtures::plain_function).to_string(),
+        pretty_name::nameof!(fixtures::plain_function).to_string(),
         "plain_function");
 }
 
@@ -199,7 +217,7 @@ fn function_macro_accepts_a_module_qualified_function() {
 #[test]
 fn function_macro_accepts_a_module_qualified_generic_function() {
     assert_eq!(
-        pretty_name::of_function!(
+        pretty_name::nameof!(
             fixtures::generic_pair::<std::vec::Vec<u8>, String>).to_string(),
         "generic_pair<Vec<u8>, String>");
 }
@@ -208,34 +226,42 @@ fn function_macro_accepts_a_module_qualified_generic_function() {
 #[test]
 fn function_macro_accepts_an_absolute_generic_function_path() {
     assert_eq!(
-        pretty_name::of_function!(::std::mem::drop::<u32>).to_string(),
+        pretty_name::nameof!(::std::mem::drop::<u32>).to_string(),
         "drop<u32>");
 }
 
-/// Verifies a generic associated owner is explicit and omitted from function output.
+/// Verifies associated constants use the member owner's display form.
 #[test]
-fn function_macro_accepts_an_angle_wrapped_associated_function() {
+fn member_macro_accepts_an_associated_constant() {
     assert_eq!(
-        pretty_name::of_function!(
-            <fixtures::GenericOwner::<std::vec::Vec<u8>>>::associated_function).to_string(),
-        "associated_function");
+        pretty_name::nameof_member!(PlainOwner::CONSTANT).to_string(),
+        "PlainOwner::CONSTANT");
 }
 
-/// Verifies associated-function type arguments use the function display grammar.
+/// Verifies a generic associated function retains its resolved owner.
 #[test]
-fn function_macro_accepts_an_angle_wrapped_generic_associated_function() {
+fn member_macro_accepts_an_angle_wrapped_associated_function() {
     assert_eq!(
-        pretty_name::of_function!(
+        pretty_name::nameof_member!(
+            <fixtures::GenericOwner::<std::vec::Vec<u8>>>::associated_function).to_string(),
+        "GenericOwner<Vec<u8>>::associated_function");
+}
+
+/// Verifies associated-function type arguments use the member display grammar.
+#[test]
+fn member_macro_accepts_an_angle_wrapped_generic_associated_function() {
+    assert_eq!(
+        pretty_name::nameof_member!(
             <fixtures::GenericOwner<u32>>::generic_associated_function::<
                 std::vec::Vec<u8>>).to_string(),
-        "generic_associated_function<Vec<u8>>");
+        "GenericOwner<u32>::generic_associated_function<Vec<u8>>");
 }
 
 /// Verifies a renamed import is validated semantically while retaining its source name.
 #[test]
 fn function_macro_preserves_a_renamed_import_identifier() {
     assert_eq!(
-        pretty_name::of_function!(renamed_generic_function::<u32>).to_string(),
+        pretty_name::nameof!(renamed_generic_function::<u32>).to_string(),
         "renamed_generic_function<u32>");
 }
 
@@ -265,8 +291,8 @@ fn type_macro_resolves_aliases_consistently() {
 
     assert_eq!(
         (
-            pretty_name::of_type!(IntegerAlias).to_string(),
-            pretty_name::of_type!(Option<IntegerAlias>).to_string()),
+            pretty_name::nameof_type!(IntegerAlias).to_string(),
+            pretty_name::nameof_type!(Option<IntegerAlias>).to_string()),
         ("u32".to_owned(), "Option<u32>".to_owned()));
 }
 
@@ -274,7 +300,7 @@ fn type_macro_resolves_aliases_consistently() {
 #[test]
 fn type_macro_shortens_qualified_generic_paths() {
     assert_eq!(
-        pretty_name::of_type!(
+        pretty_name::nameof_type!(
             std::collections::HashMap<std::string::String, i32>).to_string(),
         "HashMap<String, i32>");
 }
@@ -297,8 +323,8 @@ fn field_macro_returns_simple_owner_and_field_name() {
     let owner = PlainOwner { field: 42 };
 
     assert_eq!(
-        (pretty_name::of_field!(PlainOwner::field).to_string(), owner.field),
-        ("<PlainOwner>::field".to_owned(), 42));
+        (pretty_name::nameof_field!(PlainOwner::field).to_string(), owner.field),
+        ("PlainOwner::field".to_owned(), 42));
 }
 
 /// Verifies qualified generic field owners are semantically shortened.
@@ -308,10 +334,10 @@ fn field_macro_shortens_qualified_generic_owner() {
 
     assert_eq!(
         (
-            pretty_name::of_field!(
+            pretty_name::nameof_field!(
                 <fixtures::GenericOwner::<u32>>::value).to_string(),
             owner.value),
-        ("<GenericOwner<u32>>::value".to_owned(), 42));
+        ("GenericOwner<u32>::value".to_owned(), 42));
 }
 
 /// Verifies field owners resolve through type aliases rather than source spelling.
@@ -321,14 +347,25 @@ fn field_macro_resolves_an_owner_alias() {
     type OwnerAlias = PlainOwner;
 
     assert_eq!(
-        pretty_name::of_field!(OwnerAlias::field).to_string(),
-        "<PlainOwner>::field");
+        pretty_name::nameof_field!(OwnerAlias::field).to_string(),
+        "PlainOwner::field");
 }
 
 /// Verifies the `Self` field form resolves the concrete owner.
 #[test]
 fn field_macro_resolves_self_to_the_concrete_owner() {
-    assert_eq!(PlainOwner::self_field_name().to_string(), "<PlainOwner>::field");
+    assert_eq!(PlainOwner::self_field_name().to_string(), "PlainOwner::field");
+}
+
+/// Verifies field validation type-checks autoderef without calling user code.
+#[test]
+fn field_macro_does_not_run_deref_during_validation() {
+    FIELD_DEREF_COUNT.store(0, Ordering::Relaxed);
+    let name = pretty_name::nameof_field!(DerefOwner::field);
+
+    assert_eq!(
+        (name.to_string(), FIELD_DEREF_COUNT.load(Ordering::Relaxed)),
+        (String::from("DerefOwner::field"), 0));
 }
 
 /// Verifies the simple method form resolves and uniformly qualifies its owner.
@@ -338,8 +375,8 @@ fn method_macro_returns_simple_owner_and_method_name() {
     owner.method();
 
     assert_eq!(
-        pretty_name::of_method!(PlainOwner::method).to_string(),
-        "<PlainOwner>::method");
+        pretty_name::nameof_member!(PlainOwner::method).to_string(),
+        "PlainOwner::method");
 }
 
 /// Verifies explicit generic method arguments are shortened.
@@ -349,9 +386,9 @@ fn method_macro_formats_explicit_generic_arguments() {
     owner.generic_method::<std::string::String>();
 
     assert_eq!(
-        pretty_name::of_method!(
+        pretty_name::nameof_member!(
             PlainOwner::generic_method::<std::vec::Vec<u8>>).to_string(),
-        "<PlainOwner>::generic_method::<Vec<u8>>");
+        "PlainOwner::generic_method<Vec<u8>>");
 }
 
 /// Verifies qualified generic owners and method arguments are shortened together.
@@ -363,14 +400,14 @@ fn method_macro_shortens_qualified_owner_and_generic_arguments() {
 
     assert_eq!(
         (
-            pretty_name::of_method!(
+            pretty_name::nameof_member!(
                 <fixtures::GenericOwner<u32>>::method).to_string(),
-            pretty_name::of_method!(
+            pretty_name::nameof_member!(
                 <fixtures::GenericOwner<u32>>::generic_method::<
                     std::string::String>).to_string()),
         names!(
-            "<GenericOwner<u32>>::method",
-            "<GenericOwner<u32>>::generic_method::<String>"));
+            "GenericOwner<u32>::method",
+            "GenericOwner<u32>::generic_method<String>"));
 }
 
 /// Verifies method owners resolve through type aliases rather than source spelling.
@@ -380,8 +417,8 @@ fn method_macro_resolves_an_owner_alias() {
     type OwnerAlias = PlainOwner;
 
     assert_eq!(
-        pretty_name::of_method!(OwnerAlias::method).to_string(),
-        "<PlainOwner>::method");
+        pretty_name::nameof_member!(OwnerAlias::method).to_string(),
+        "PlainOwner::method");
 }
 
 /// Verifies trait methods use the concrete bounded owner rather than a trait declaration.
@@ -389,7 +426,7 @@ fn method_macro_resolves_an_owner_alias() {
 fn method_macro_resolves_a_bounded_owner_parameter() {
     assert_eq!(
         trait_method_name::<PlainOwner>().to_string(),
-        "<PlainOwner>::trait_method");
+        "PlainOwner::trait_method");
 }
 
 /// Verifies both non-generic and generic `Self` method forms resolve their owner.
@@ -400,8 +437,8 @@ fn method_macro_resolves_self_and_generic_arguments() {
             PlainOwner::self_method_name().to_string(),
             PlainOwner::self_generic_method_name::<std::vec::Vec<u8>>().to_string()),
         names!(
-            "<PlainOwner>::method",
-            "<PlainOwner>::generic_method::<Vec<u8>>"));
+            "PlainOwner::method",
+            "PlainOwner::generic_method<Vec<u8>>"));
 }
 
 /// Verifies `Self` method values retain their resolved owner monomorphization.
@@ -411,14 +448,14 @@ fn self_method_values_distinguish_generic_monomorphizations() {
         (
             GenericOwner::<u8>::self_method_name().to_string(),
             GenericOwner::<u16>::self_method_name().to_string()),
-        names!("<GenericOwner<u8>>::method", "<GenericOwner<u16>>::method"));
+        names!("GenericOwner<u8>::method", "GenericOwner<u16>::method"));
 }
 
 /// Verifies simple unit and tuple variants use the same bare syntax and owner format.
 #[test]
 fn variant_macro_supports_unit_and_tuple_variants() {
     let unit_name = match SimpleEnum::Unit {
-        SimpleEnum::Unit => pretty_name::of_variant!(SimpleEnum::Unit),
+        SimpleEnum::Unit => pretty_name::nameof_member!(SimpleEnum::Unit),
         _ => unreachable!(),
     };
     let tuple_value = match SimpleEnum::Tuple(7) {
@@ -428,11 +465,11 @@ fn variant_macro_supports_unit_and_tuple_variants() {
     assert_eq!(
         (
             unit_name.to_string(),
-            pretty_name::of_variant!(SimpleEnum::Tuple).to_string(),
+            pretty_name::nameof_member!(SimpleEnum::Tuple).to_string(),
             tuple_value),
         (
-            String::from("<SimpleEnum>::Unit"),
-            String::from("<SimpleEnum>::Tuple"),
+            String::from("SimpleEnum::Unit"),
+            String::from("SimpleEnum::Tuple"),
             7));
 }
 
@@ -440,11 +477,11 @@ fn variant_macro_supports_unit_and_tuple_variants() {
 #[test]
 fn variant_macro_does_not_evaluate_the_referenced_variant() {
     VARIANT_DROP_COUNT.store(0, Ordering::Relaxed);
-    let name = pretty_name::of_variant!(DroppingEnum::Unit);
+    let name = pretty_name::nameof_member!(DroppingEnum::Unit);
 
     assert_eq!(
         (name.to_string(), VARIANT_DROP_COUNT.load(Ordering::Relaxed)),
-        (String::from("<DroppingEnum>::Unit"), 0));
+        (String::from("DroppingEnum::Unit"), 0));
 }
 
 /// Verifies generic variant constructors support qualification and source-spelled aliases.
@@ -455,7 +492,7 @@ fn variant_macro_supports_generic_variant_constructors() {
 
     let unit_name = match GenericEnum::<u32>::Unit {
         GenericEnum::Unit => {
-            pretty_name::of_variant!(<fixtures::GenericEnum<u32>>::Unit)
+            pretty_name::nameof_member!(<fixtures::GenericEnum<u32>>::Unit)
         }
         _ => unreachable!(),
     };
@@ -466,11 +503,11 @@ fn variant_macro_supports_generic_variant_constructors() {
     assert_eq!(
         (
             unit_name.to_string(),
-            pretty_name::of_variant!(GenericU32::Tuple).to_string(),
+            pretty_name::nameof_member!(GenericU32::Tuple).to_string(),
             tuple_value),
         (
-            String::from("<GenericEnum<u32>>::Unit"),
-            String::from("<GenericEnum<u32>>::Tuple"),
+            String::from("GenericEnum<u32>::Unit"),
+            String::from("GenericEnum<u32>::Tuple"),
             7));
 }
 
@@ -482,8 +519,8 @@ fn variant_macro_supports_unit_and_tuple_variants_through_self() {
             GenericEnum::<u32>::self_unit_name().to_string(),
             GenericEnum::<u32>::self_tuple_name().to_string()),
         names!(
-            "<GenericEnum<u32>>::Unit",
-            "<GenericEnum<u32>>::Tuple"));
+            "GenericEnum<u32>::Unit",
+            "GenericEnum<u32>::Tuple"));
 }
 
 /// Verifies `Self` variant values retain their resolved owner monomorphization.
@@ -493,5 +530,5 @@ fn self_variant_values_distinguish_generic_monomorphizations() {
         (
             GenericEnum::<u8>::self_unit_name().to_string(),
             GenericEnum::<u16>::self_unit_name().to_string()),
-        names!("<GenericEnum<u8>>::Unit", "<GenericEnum<u16>>::Unit"));
+        names!("GenericEnum<u8>::Unit", "GenericEnum<u16>::Unit"));
 }

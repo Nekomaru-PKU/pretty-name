@@ -1,7 +1,7 @@
-error: expected a module-qualified function path with explicit type arguments, or an angle-wrapped associated owner
+error: expected an ordinary value path, optionally followed by explicit type arguments
  --> tests/ui/fail/function_const_argument.rs:6:13
   |
-6 |     let _ = pretty_name::of_function!(const_generic::<16>);
-  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+6 |     let _ = pretty_name::nameof!(const_generic::<16>);
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   |
-  = note: this error originates in the macro `$crate::__qualified_function_name` which comes from the expansion of the macro `pretty_name::of_function` (in Nightly builds, run with -Z macro-backtrace for more info)
+  = note: this error originates in the macro `$crate::nameof` which comes from the expansion of the macro `pretty_name::nameof` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -1,7 +1,7 @@
-error: expected `Owner::Variant` or `<qualified::Owner<Args>>::Variant`
+error: expected `Owner::member` or `<path::to::Owner<Args>>::member`, optionally followed by explicit type arguments
  --> tests/ui/fail/legacy_tuple_variant_pattern.rs:9:13
   |
-9 |     let _ = pretty_name::of_variant!(Choice::Tuple(..));
-  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+9 |     let _ = pretty_name::nameof_member!(Choice::Tuple(..));
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   |
-  = note: this error originates in the macro `pretty_name::of_variant` (in Nightly builds, run with -Z macro-backtrace for more info)
+  = note: this error originates in the macro `pretty_name::nameof_member` (in Nightly builds, run with -Z macro-backtrace for more info)

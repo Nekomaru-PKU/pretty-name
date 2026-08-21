@@ -1,4 +1,4 @@
-use pretty_name::{TypeName, type_name, type_name_of_val};
+use pretty_name::{PrettyName, type_name, type_name_of_val};
 
 /// Formats a resolved type through the public value API.
 fn displayed_type_name<T: ?Sized>() -> String { type_name::<T>().to_string() }
@@ -325,19 +325,19 @@ fn long_types_are_extracted_across_pretty_printer_line_wrapping() {
 
 /// Verifies the public function returns the opaque display value.
 #[test]
-fn type_name_returns_type_name_value() {
-    let name: TypeName = type_name::<std::num::NonZeroU8>();
+fn type_name_returns_pretty_name_value() {
+    let name: PrettyName = type_name::<std::num::NonZeroU8>();
 
     assert_eq!(name.to_string(), "NonZero<u8>");
 }
 
-/// Verifies the opaque value uses conventional derived structural debugging.
+/// Verifies the opaque value's debugging delegates to its display representation.
 #[test]
-fn type_name_debug_is_structural() {
+fn type_name_debug_wraps_display_output() {
     let debug = format!("{:?}", type_name::<std::num::NonZeroU8>());
 
     assert!(
-        debug.starts_with("TypeName(") && debug.contains("NonZero"),
+        debug.starts_with("PrettyName(") && debug.contains("NonZero"),
         "unexpected debug representation: {debug}");
 }
 

@@ -6,5 +6,5 @@ enum Choice {
 
 /// Uses the removed tuple-pattern macro syntax.
 fn main() {
-    let _ = pretty_name::of_variant!(Choice::Tuple(..));
+    let _ = pretty_name::nameof_member!(Choice::Tuple(..));
 }

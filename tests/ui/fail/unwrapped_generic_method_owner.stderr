@@ -1,7 +1,7 @@
-error: expected `Owner::method` or `<qualified::Owner<Args>>::method`, optionally followed by explicit type arguments
+error: expected `Owner::member` or `<path::to::Owner<Args>>::member`, optionally followed by explicit type arguments
   --> tests/ui/fail/unwrapped_generic_method_owner.rs:11:13
    |
-11 |     let _ = pretty_name::of_method!(Owner::<u32>::method);
-   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11 |     let _ = pretty_name::nameof_member!(Owner::<u32>::method);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = note: this error originates in the macro `pretty_name::of_method` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the macro `pretty_name::nameof_member` (in Nightly builds, run with -Z macro-backtrace for more info)

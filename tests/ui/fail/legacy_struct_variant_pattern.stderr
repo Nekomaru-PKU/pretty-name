@@ -1,7 +1,7 @@
-error: expected `Owner::Variant` or `<qualified::Owner<Args>>::Variant`
+error: expected `Owner::member` or `<path::to::Owner<Args>>::member`, optionally followed by explicit type arguments
   --> tests/ui/fail/legacy_struct_variant_pattern.rs:12:13
    |
-12 |     let _ = pretty_name::of_variant!(Choice::Struct { value, .. });
-   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+12 |     let _ = pretty_name::nameof_member!(Choice::Struct { value, .. });
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = note: this error originates in the macro `pretty_name::of_variant` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the macro `pretty_name::nameof_member` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -8,5 +8,5 @@ impl Owner {
 
 /// Supplies a direct const argument to the type-only macro grammar.
 fn main() {
-    let _ = pretty_name::of_method!(Owner::const_generic::<16>);
+    let _ = pretty_name::nameof_member!(Owner::const_generic::<16>);
 }

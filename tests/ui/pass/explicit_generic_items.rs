@@ -11,6 +11,6 @@ impl Owner {
 
 /// Exercises fully explicit generic function and method forms.
 fn main() {
-    let _ = pretty_name::of_function!(generic_pair::<Vec<u8>, String>);
-    let _ = pretty_name::of_method!(Owner::generic_pair::<Vec<u8>, String>);
+    let _ = pretty_name::nameof!(generic_pair::<Vec<u8>, String>);
+    let _ = pretty_name::nameof_member!(Owner::generic_pair::<Vec<u8>, String>);
 }

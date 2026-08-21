@@ -9,5 +9,5 @@ enum Choice {
 
 /// Requests an intentionally unsupported struct variant.
 fn main() {
-    let _ = pretty_name::of_variant!(Choice::Struct);
+    let _ = pretty_name::nameof_member!(Choice::Struct);
 }

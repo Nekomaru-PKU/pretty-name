@@ -8,5 +8,5 @@ impl<T> Owner<T> {
 
 /// Omits the required wrapper around a generic associated-function owner.
 fn main() {
-    let _ = pretty_name::of_function!(Owner::<u32>::create);
+    let _ = pretty_name::nameof_member!(Owner::<u32>::create);
 }

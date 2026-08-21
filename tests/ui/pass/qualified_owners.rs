@@ -39,16 +39,16 @@ mod nested {
 
 /// Exercises fields, methods, and variants with qualified generic owners.
 fn main() {
-    let _ = pretty_name::of_field!(<nested::Owner<u32>>::field);
-    let _ = pretty_name::of_method!(<nested::Owner<u32>>::method);
-    let _ = pretty_name::of_method!(<nested::Owner<u32>>::generic::<String>);
-    let _ = pretty_name::of_variant!(<nested::Choice<u32>>::Unit);
-    let _ = pretty_name::of_variant!(<nested::Choice<u32>>::Tuple);
-    let _ = pretty_name::of_field!(
+    let _ = pretty_name::nameof_field!(<nested::Owner<u32>>::field);
+    let _ = pretty_name::nameof_member!(<nested::Owner<u32>>::method);
+    let _ = pretty_name::nameof_member!(<nested::Owner<u32>>::generic::<String>);
+    let _ = pretty_name::nameof_member!(<nested::Choice<u32>>::Unit);
+    let _ = pretty_name::nameof_member!(<nested::Choice<u32>>::Tuple);
+    let _ = pretty_name::nameof_field!(
         <nested::ComplexOwner<'static, Vec<Vec<u8>>, 4>>::field);
-    let _ = pretty_name::of_method!(
+    let _ = pretty_name::nameof_member!(
         <nested::ComplexOwner<'static, Vec<Vec<u8>>, 4>>::method);
-    let _ = pretty_name::of_method!(
+    let _ = pretty_name::nameof_member!(
         <nested::ComplexOwner<'static, Vec<Vec<u8>>, 4>>::generic::<Option<String>>);
-    let _ = pretty_name::of_variant!(<nested::Choice<Vec<Vec<u8>>>>::Tuple);
+    let _ = pretty_name::nameof_member!(<nested::Choice<Vec<Vec<u8>>>>::Tuple);
 }

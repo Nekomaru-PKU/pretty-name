@@ -8,5 +8,5 @@ impl Owner {
 
 /// Requests a method with field syntax.
 fn main() {
-    let _ = pretty_name::of_field!(Owner::item);
+    let _ = pretty_name::nameof_field!(Owner::item);
 }

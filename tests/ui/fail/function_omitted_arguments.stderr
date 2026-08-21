@@ -1,7 +1,7 @@
 error[E0282]: type annotations needed
  --> tests/ui/fail/function_omitted_arguments.rs:6:13
   |
-6 |     let _ = pretty_name::of_function!(generic);
-  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+6 |     let _ = pretty_name::nameof!(generic);
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
   |
-  = note: this error originates in the macro `pretty_name::of_function` (in Nightly builds, run with -Z macro-backtrace for more info)
+  = note: this error originates in the macro `pretty_name::nameof` (in Nightly builds, run with -Z macro-backtrace for more info)

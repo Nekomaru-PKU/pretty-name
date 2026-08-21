@@ -1,5 +1,5 @@
 error[E0425]: cannot find type `MissingType` in this scope
- --> tests/ui/fail/missing_type.rs:3:35
+ --> tests/ui/fail/missing_type.rs:3:39
   |
-3 |     let _ = pretty_name::of_type!(MissingType);
-  |                                   ^^^^^^^^^^^ not found in this scope
+3 |     let _ = pretty_name::nameof_type!(MissingType);
+  |                                       ^^^^^^^^^^^ not found in this scope

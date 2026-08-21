@@ -5,5 +5,5 @@ struct Owner<T> {
 }
 
 fn main() {
-    let _ = pretty_name::of_field!(<Owner<u32>::field);
+    let _ = pretty_name::nameof_field!(<Owner<u32>::field);
 }

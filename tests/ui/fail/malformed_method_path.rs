@@ -7,5 +7,5 @@ impl Owner {
 }
 
 fn main() {
-    let _ = pretty_name::of_method!(Owner::method());
+    let _ = pretty_name::nameof_member!(Owner::method());
 }

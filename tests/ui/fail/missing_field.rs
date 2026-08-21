@@ -3,5 +3,5 @@ struct Owner;
 
 /// Requests a field that does not exist.
 fn main() {
-    let _ = pretty_name::of_field!(Owner::missing_field);
+    let _ = pretty_name::nameof_field!(Owner::missing_field);
 }

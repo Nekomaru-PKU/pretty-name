@@ -5,5 +5,5 @@ enum Choice {
 }
 
 fn main() {
-    let _ = pretty_name::of_variant!(Choice::Unit());
+    let _ = pretty_name::nameof_member!(Choice::Unit());
 }

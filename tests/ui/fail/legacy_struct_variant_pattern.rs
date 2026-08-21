@@ -9,5 +9,5 @@ enum Choice {
 
 /// Uses the removed struct-pattern macro syntax.
 fn main() {
-    let _ = pretty_name::of_variant!(Choice::Struct { value, .. });
+    let _ = pretty_name::nameof_member!(Choice::Struct { value, .. });
 }

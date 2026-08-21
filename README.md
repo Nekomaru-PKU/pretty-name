@@ -8,7 +8,7 @@ Get the human-friendly name of types, functions, methods, fields, and enum varia
 
 ## Overview
 
-`pretty-name` provides macros and functions for extracting readable names of Rust language constructs. Every naming operation returns a category-specific opaque value that implements `Display`. Unlike `stringify!` or `std::any::type_name`, this crate offers:
+`pretty-name` provides macros and functions for extracting readable names of Rust language constructs. Every naming operation returns the same opaque `PrettyName` value, which implements `Display`. Unlike `stringify!` or `std::any::type_name`, this crate offers:
 
 ### Key Features
 
@@ -22,7 +22,7 @@ Get the human-friendly name of types, functions, methods, fields, and enum varia
 
 - **Catch typos at compile time**: Every referenced item is validated. Misspelled identifiers, fields, methods, or variants trigger compile errors instead of runtime failures.
 
-- **Structured name values**: Identifier, function, member, and type names retain their semantic components until they are formatted.
+- **One opaque name value**: Every operation returns `PrettyName`, which retains its semantic components until formatting.
 
 - **Natural, idiomatic syntax**: All syntax follows Rust conventions as closely as possible, making the macros feel like native language features.
 
@@ -45,61 +45,81 @@ cargo add pretty-name
 
 ## Usage
 
-Naming operations yield opaque values that can be formatted with `{}` or converted with the standard `.to_string()`.
+Naming operations return [`PrettyName`](https://docs.rs/pretty-name/latest/pretty_name/struct.PrettyName.html),
+which can be formatted with `{}` or converted with the standard `.to_string()`.
 
-| What to get | Syntax | Example |
-|-------------|--------|---------|
-| **Type names** | | |
-| Type name from macro | `pretty_name::of_type!(T)` | `pretty_name::of_type!(Vec<i32>).to_string()` → `"Vec<i32>"` |
-| Type name | `type_name::<T>()` | `type_name::<Vec<i32>>().to_string()` → `"Vec<i32>"` |
-| Type name from value | `type_name_of_val(val)` | `type_name_of_val(&vec![1]).to_string()` → `"Vec<i32>"` |
-| **Variables and constants** | | |
-| Variable or constant name | `pretty_name::of_var!(ident)` | `pretty_name::of_var!(my_var).to_string()` → `"my_var"` |
-| **Functions** | | |
-| Function name | `pretty_name::of_function!(ident)` | `pretty_name::of_function!(my_func).to_string()` → `"my_func"` |
-| Generic function (include params) | `pretty_name::of_function!(ident::<T, U>)` | `pretty_name::of_function!(my_func::<u32, String>).to_string()` → `"my_func<u32, String>"` |
-| Qualified function | `pretty_name::of_function!(module::ident)` | `pretty_name::of_function!(my_module::my_func).to_string()` → `"my_func"` |
-| Associated function | `pretty_name::of_function!(<TypePath>::ident)` | `pretty_name::of_function!(<my_module::Owner<u32>>::new).to_string()` → `"new"` |
-| **Struct fields** | | |
-| Field name | `pretty_name::of_field!(Type::field)` | `pretty_name::of_field!(MyStruct::field).to_string()` → `"<MyStruct>::field"` |
-| Field name (on generic type) | `pretty_name::of_field!(<Type<T>>::field)` | `pretty_name::of_field!(<MyStruct<T>>::field).to_string()` → `"<MyStruct<T>>::field"` |
-| Field name (on qualified type) | `pretty_name::of_field!(<module::Type>::field)` | `pretty_name::of_field!(<my_module::MyStruct>::field).to_string()` → `"<MyStruct>::field"` |
-| **Methods** | | |
-| Method name | `pretty_name::of_method!(Type::method)` | `pretty_name::of_method!(MyStruct::method).to_string()` → `"<MyStruct>::method"` |
-| Method (on generic type) | `pretty_name::of_method!(<Type<T>>::method)` | `pretty_name::of_method!(<MyStruct<T>>::method).to_string()` → `"<MyStruct<T>>::method"` |
-| Method (on qualified type) | `pretty_name::of_method!(<module::Type>::method)` | `pretty_name::of_method!(<my_module::MyStruct>::method).to_string()` → `"<MyStruct>::method"` |
-| Generic method | `pretty_name::of_method!(Type::method::<T>)` | `pretty_name::of_method!(MyStruct::method::<u32>).to_string()` → `"<MyStruct>::method::<u32>"` |
-| Generic method (on generic type) | `pretty_name::of_method!(<Type<T>>::method::<U>)` | `pretty_name::of_method!(<MyStruct<T>>::method::<u32>).to_string()` → `"<MyStruct<T>>::method::<u32>"` |
-| Generic method (on qualified type) | `pretty_name::of_method!(<module::Type>::method::<T>)` | `pretty_name::of_method!(<my_module::MyStruct>::method::<u32>).to_string()` → `"<MyStruct>::method::<u32>"` |
-| **Enum variants** | | |
-| Unit variant | `pretty_name::of_variant!(Type::Variant)` | `pretty_name::of_variant!(MyEnum::UnitVariant).to_string()` → `"<MyEnum>::UnitVariant"` |
-| Tuple variant | `pretty_name::of_variant!(Type::Variant)` | `pretty_name::of_variant!(MyEnum::TupleVariant).to_string()` → `"<MyEnum>::TupleVariant"` |
-| Variant (on generic type) | `pretty_name::of_variant!(<Type<T>>::Variant)` | `pretty_name::of_variant!(<MyEnum<u32>>::Variant).to_string()` → `"<MyEnum<u32>>::Variant"` |
-| Variant (on qualified type) | `pretty_name::of_variant!(<module::Type>::Variant)` | `pretty_name::of_variant!(<my_module::MyEnum>::Variant).to_string()` → `"<MyEnum>::Variant"` |
+```rust
+use pretty_name::*;
 
-**Notes:**
-- Macros resolve `Self` to the appropriate type when used inside `impl` blocks.
-- A single-identifier member owner uses `Type::member`. Qualified or generic owners
-  make their boundary explicit with `<...>`, such as `<module::Type<Args>>::member`.
-  Anonymous owner types and qualified-self paths remain unsupported.
-- Module-qualified functions use ordinary paths such as `module::function`. Associated
-  functions on qualified or generic types use `<module::Type<Args>>::function`.
-- Name trait-provided methods through a concrete implementor or a bounded type parameter
-  such as `T::method`. A bare trait declaration is not a resolved owner type.
-- `of_variant!` supports unit values and tuple constructors through the same bare
-  `Type::Variant` syntax. Struct variants are unsupported because their paths are not
-  first-class values. Stable Rust validates associated-item resolution rather than the
-  declaration category, so an associated constant or function can satisfy this check.
-- Generic functions and methods require every caller-provided generic argument to be
-  written explicitly as a concrete type. Inferred arguments, direct const arguments,
-  omitted arguments, and the legacy `::<..>` placeholder are unsupported.
-- `of_type!(Type)` always uses semantic type-name resolution. Aliases, renamed imports,
-  generic parameters, and `Self` therefore use their compiler-resolved types.
-- Type names are intended for diagnostics. Rust does not guarantee that compiler type
-  names are unique or stable between compiler versions, so they should not be used as
-  persistent identifiers or serialization keys.
-- Compiler-generated names that are not valid Rust type syntax, such as some closure
-  descriptions, are returned unchanged rather than replaced with an error marker.
+struct Owner<T> {
+    field: T,
+}
+
+impl<T> Owner<T> {
+    const CONSTANT: u32 = 42;
+
+    fn method<U>(&self) {}
+}
+
+enum Choice<T> {
+    Unit,
+    Tuple(T),
+}
+
+fn generic_function<T>() {}
+
+let local_value = 42;
+
+assert_eq!(nameof!(local_value).to_string(), "local_value");
+assert_eq!(nameof!(generic_function::<u32>).to_string(), "generic_function<u32>");
+assert_eq!(nameof_member!(<Owner<u32>>::CONSTANT).to_string(), "Owner<u32>::CONSTANT");
+assert_eq!(
+    nameof_member!(<Owner<u32>>::method::<String>).to_string(),
+    "Owner<u32>::method<String>");
+assert_eq!(nameof_member!(<Choice<u32>>::Tuple).to_string(), "Choice<u32>::Tuple");
+assert_eq!(nameof_field!(<Owner<u32>>::field).to_string(), "Owner<u32>::field");
+assert_eq!(nameof_type!(std::collections::HashMap<String, i32>).to_string(),
+    "HashMap<String, i32>");
+assert_eq!(type_name::<Option<u32>>().to_string(), "Option<u32>");
+assert_eq!(type_name_of_val(&local_value).to_string(), "i32");
+```
+
+The four macros use distinct resolution modes:
+
+1. `nameof!` names an ordinary value path, including bindings, constants, statics, and
+   free functions. Module qualification is accepted but omitted from display.
+2. `nameof_member!` names a value-like member selected through a resolved owner type.
+   Members include associated constants, associated functions, methods, and unit or
+   tuple enum variants.
+3. `nameof_field!` validates an instance field through field-access syntax.
+4. `nameof_type!` obtains the compiler-resolved name of a type.
+
+Additional behavior and boundaries:
+
+1. Macros resolve `Self` to the appropriate type when used inside `impl` blocks.
+2. A single-identifier owner uses `Type::member`. Qualified or generic owners make
+   their input boundary explicit with `<...>`, such as
+   `<module::Type<Args>>::member`. The wrapper is omitted from displayed output.
+3. Anonymous owner types and qualified-self owner paths remain unsupported.
+4. Name trait-provided methods through a concrete implementor or a bounded type
+   parameter such as `T::method`. A bare trait declaration is not a resolved owner type.
+5. Struct variants are unsupported because their paths are not first-class values.
+   Stable Rust validates member resolution rather than the declaration category.
+6. Generic values and members require every caller-provided generic argument to be
+   written explicitly as a concrete type. Inferred arguments, direct const arguments,
+   omitted arguments, and the legacy `::<..>` placeholder are unsupported.
+7. Every validation expression is placed in an uncalled closure. Naming does not invoke
+   functions, access fields, evaluate members, construct variants, call `Deref`, or run
+   destructors. Local-value validation may establish a temporary shared closure capture
+   for borrow checking, but it invokes no user code.
+8. Constructing a name with generic arguments may allocate its argument slice.
+   Formatting a type may allocate while parsing and rendering it, and writes through
+   the caller-provided formatter.
+9. Type names are diagnostic presentation. Rust does not guarantee that compiler type
+   names are unique or stable between compiler versions, so they are unsuitable as
+   persistent identifiers or serialization keys.
+10. Compiler-generated names that are not valid Rust type syntax, such as some closure
+    descriptions, are returned unchanged rather than replaced with an error marker.
 
 ## License
 

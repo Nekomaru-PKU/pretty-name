@@ -14,7 +14,7 @@ trait HasOwner {
 
 /// Requests a member through qualified-self syntax outside the named-path contract.
 fn name<T: HasOwner<Owner = Owner>>() {
-    let _ = pretty_name::of_method!(<<T as HasOwner>::Owner>::method);
+    let _ = pretty_name::nameof_member!(<<T as HasOwner>::Owner>::method);
 }
 
 fn main() {}

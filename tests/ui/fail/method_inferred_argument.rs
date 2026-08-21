@@ -8,5 +8,5 @@ impl Owner {
 
 /// Supplies `_` where the macro contract requires a concrete type.
 fn main() {
-    let _ = pretty_name::of_method!(Owner::generic::<_>);
+    let _ = pretty_name::nameof_member!(Owner::generic::<_>);
 }

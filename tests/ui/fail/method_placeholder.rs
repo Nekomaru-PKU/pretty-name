@@ -8,5 +8,5 @@ impl Owner {
 
 /// Supplies the unsupported `::<..>` placeholder.
 fn main() {
-    let _ = pretty_name::of_method!(Owner::generic::<..>);
+    let _ = pretty_name::nameof_member!(Owner::generic::<..>);
 }

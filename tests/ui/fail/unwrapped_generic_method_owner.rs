@@ -8,5 +8,5 @@ impl<T> Owner<T> {
 
 /// Omits the required wrapper around a generic method owner.
 fn main() {
-    let _ = pretty_name::of_method!(Owner::<u32>::method);
+    let _ = pretty_name::nameof_member!(Owner::<u32>::method);
 }

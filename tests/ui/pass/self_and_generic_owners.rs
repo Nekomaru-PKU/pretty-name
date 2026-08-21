@@ -13,10 +13,10 @@ impl<T> Owner<T> {
 
     /// Exercises the supported `Self` macro forms inside a generic implementation.
     fn names() {
-        let _ = pretty_name::of_type!(Self);
-        let _ = pretty_name::of_field!(Self::field);
-        let _ = pretty_name::of_method!(Self::method);
-        let _ = pretty_name::of_method!(Self::generic::<u32>);
+        let _ = pretty_name::nameof_type!(Self);
+        let _ = pretty_name::nameof_field!(Self::field);
+        let _ = pretty_name::nameof_member!(Self::method);
+        let _ = pretty_name::nameof_member!(Self::generic::<u32>);
     }
 }
 
@@ -32,7 +32,7 @@ impl<T> Named for Owner<T> {
 
 /// Exercises a trait-provided method through a resolved generic owner.
 fn bounded_owner_name<T: Named>() {
-    let _ = pretty_name::of_method!(T::trait_method);
+    let _ = pretty_name::nameof_member!(T::trait_method);
 }
 
 /// A generic enum used to validate both supported `Self` variant categories.
@@ -46,8 +46,8 @@ enum Choice<T> {
 impl<T> Choice<T> {
     /// Exercises unit and tuple variant constructors through `Self`.
     fn names() {
-        let _ = pretty_name::of_variant!(Self::Unit);
-        let _ = pretty_name::of_variant!(Self::Tuple);
+        let _ = pretty_name::nameof_member!(Self::Unit);
+        let _ = pretty_name::nameof_member!(Self::Tuple);
     }
 }
 

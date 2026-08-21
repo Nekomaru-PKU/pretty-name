@@ -8,6 +8,6 @@ enum Choice<T> {
 
 /// Exercises the explicit owner-boundary syntax for a generic variant owner.
 fn main() {
-    let _ = pretty_name::of_variant!(<Choice::<u32>>::Unit);
-    let _ = pretty_name::of_variant!(<Choice<u32>>::Value);
+    let _ = pretty_name::nameof_member!(<Choice::<u32>>::Unit);
+    let _ = pretty_name::nameof_member!(<Choice<u32>>::Value);
 }

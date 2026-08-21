@@ -1,16 +1,16 @@
-/// A non-enum owner used to pin the associated-item validation boundary.
+/// A non-enum owner used to exercise supported member categories.
 struct Owner;
 
 impl Owner {
-    /// An associated constant accepted by the same path check as a unit variant.
+    /// An associated constant accepted by the member macro.
     const VALUE: Self = Self;
 
-    /// An associated function accepted by the same path check as a tuple constructor.
+    /// An associated function accepted by the member macro.
     fn constructor() -> Self { Self }
 }
 
-/// Verifies stable Rust validation intentionally checks resolution, not declaration kind.
+/// Verifies associated constants and functions are both first-class members.
 fn main() {
-    let _ = pretty_name::of_variant!(Owner::VALUE);
-    let _ = pretty_name::of_variant!(Owner::constructor);
+    let _ = pretty_name::nameof_member!(Owner::VALUE);
+    let _ = pretty_name::nameof_member!(Owner::constructor);
 }

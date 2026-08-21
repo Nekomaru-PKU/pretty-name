@@ -9,5 +9,5 @@ mod nested {
 
 /// Omits the required wrapper around a qualified field owner.
 fn main() {
-    let _ = pretty_name::of_field!(nested::Owner::field);
+    let _ = pretty_name::nameof_field!(nested::Owner::field);
 }

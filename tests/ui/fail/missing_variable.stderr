@@ -1,5 +1,5 @@
 error[E0425]: cannot find value `missing_variable` in this scope
  --> tests/ui/fail/missing_variable.rs:3:34
   |
-3 |     let _ = pretty_name::of_var!(missing_variable);
+3 |     let _ = pretty_name::nameof!(missing_variable);
   |                                  ^^^^^^^^^^^^^^^^ not found in this scope

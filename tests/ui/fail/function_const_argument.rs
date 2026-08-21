@@ -3,5 +3,5 @@ fn const_generic<const LENGTH: usize>() {}
 
 /// Supplies a direct const argument to the type-only macro grammar.
 fn main() {
-    let _ = pretty_name::of_function!(const_generic::<16>);
+    let _ = pretty_name::nameof!(const_generic::<16>);
 }

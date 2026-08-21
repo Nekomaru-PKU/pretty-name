@@ -1,7 +1,7 @@
-error: expected `Owner::field` or `<qualified::Owner<Args>>::field`
+error: expected `Owner::field` or `<path::to::Owner<Args>>::field`
  --> tests/ui/fail/anonymous_field_owner.rs:9:13
   |
-9 |     let _ = pretty_name::of_field!(<&Owner>::field);
-  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+9 |     let _ = pretty_name::nameof_field!(<&Owner>::field);
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   |
-  = note: this error originates in the macro `pretty_name::of_field` (in Nightly builds, run with -Z macro-backtrace for more info)
+  = note: this error originates in the macro `pretty_name::nameof_field` (in Nightly builds, run with -Z macro-backtrace for more info)

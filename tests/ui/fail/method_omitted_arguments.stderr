@@ -1,7 +1,7 @@
 error[E0282]: type annotations needed
   --> tests/ui/fail/method_omitted_arguments.rs:11:13
    |
-11 |     let _ = pretty_name::of_method!(Owner::generic);
-   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+11 |     let _ = pretty_name::nameof_member!(Owner::generic);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
    |
-   = note: this error originates in the macro `$crate::of_method` which comes from the expansion of the macro `pretty_name::of_method` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the macro `$crate::nameof_member` which comes from the expansion of the macro `pretty_name::nameof_member` (in Nightly builds, run with -Z macro-backtrace for more info)

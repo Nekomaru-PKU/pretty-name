@@ -6,5 +6,5 @@ enum Choice {
 
 /// Requests a variant that does not exist.
 fn main() {
-    let _ = pretty_name::of_variant!(Choice::Missing);
+    let _ = pretty_name::nameof_member!(Choice::Missing);
 }

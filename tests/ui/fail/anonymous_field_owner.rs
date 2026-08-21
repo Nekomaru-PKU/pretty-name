@@ -6,5 +6,5 @@ struct Owner {
 
 /// Uses an anonymous reference type where the macro requires a named owner path.
 fn main() {
-    let _ = pretty_name::of_field!(<&Owner>::field);
+    let _ = pretty_name::nameof_field!(<&Owner>::field);
 }

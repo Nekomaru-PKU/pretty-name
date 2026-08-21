@@ -1,8 +1,8 @@
 error[E0283]: type annotations needed
   --> tests/ui/fail/inference_heavy_method.rs:22:13
    |
-22 |     let _ = pretty_name::of_method!(<Owner<u32>>::generated);
-   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+22 |     let _ = pretty_name::nameof_member!(<Owner<u32>>::generated);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
    |
    = note: the type must implement `Param<u32>`
 help: the trait `Param<u32>` is implemented for `Argument`
@@ -18,4 +18,4 @@ note: required by a bound in `Owner::<T>::generated`
 15 |     where
 16 |         P: Param<T>,
    |            ^^^^^^^^ required by this bound in `Owner::<T>::generated`
-   = note: this error originates in the macro `pretty_name::of_method` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the macro `pretty_name::nameof_member` (in Nightly builds, run with -Z macro-backtrace for more info)

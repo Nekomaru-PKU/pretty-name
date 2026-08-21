@@ -1,7 +1,7 @@
-error: expected `Owner::method` or `<qualified::Owner<Args>>::method`, optionally followed by explicit type arguments
+error: expected `Owner::member` or `<path::to::Owner<Args>>::member`, optionally followed by explicit type arguments
   --> tests/ui/fail/qualified_self_method_owner.rs:17:13
    |
-17 |     let _ = pretty_name::of_method!(<<T as HasOwner>::Owner>::method);
-   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+17 |     let _ = pretty_name::nameof_member!(<<T as HasOwner>::Owner>::method);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = note: this error originates in the macro `pretty_name::of_method` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the macro `pretty_name::nameof_member` (in Nightly builds, run with -Z macro-backtrace for more info)

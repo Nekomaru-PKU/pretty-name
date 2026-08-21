@@ -9,5 +9,5 @@ mod nested {
 
 /// Omits the required wrapper around a qualified variant owner.
 fn main() {
-    let _ = pretty_name::of_variant!(nested::Choice::Unit);
+    let _ = pretty_name::nameof_member!(nested::Choice::Unit);
 }
