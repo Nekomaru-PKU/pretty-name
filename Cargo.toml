@@ -1,6 +1,6 @@
 [package]
 name = "pretty-name"
-version = "1.0.0-alpha.1"
+version = "1.0.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 keywords = ["name", "name-of", "name_of", "type-name", "type_name"]
@@ -16,8 +16,3 @@ syn = { version = "3.0.3", features = ["full", "visit-mut"] }
 
 [dev-dependencies]
 trybuild = "1.0.120"
-windows = { version = "0.62.2", features = [
-    "ApplicationModel_Activation",
-    "ApplicationModel_Core",
-    "Foundation",
-] }
