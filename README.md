@@ -2,28 +2,15 @@
 
 [![Crates.io](https://img.shields.io/crates/v/pretty-name.svg)](https://crates.io/crates/pretty-name)
 [![Documentation](https://docs.rs/pretty-name/badge.svg)](https://docs.rs/pretty-name)
-[![License](https://img.shields.io/crates/l/pretty-name.svg)](https://github.com/Nekomaru-PKU/pretty-name#license)
+[![License](https://img.shields.io/crates/l/pretty-name.svg)](https://github.com/NekomaruQwQ/pretty-name#license)
 
-Get concise, human-friendly names for Rust types, functions, methods, fields, and more—with
-compiler validation plus refactoring and IDE support.
+Get concise, human-friendly names for Rust types, values, functions, fields, methods, and
+variants without maintaining string literals by hand.
 
-## Features
-
-1. **Grammar-aware type shortening.** `pretty-name` parses compiler type descriptions as
-   Rust syntax with [`syn`](https://docs.rs/syn) before removing module qualification.
-   Unlike case- or delimiter-based heuristics, this correctly handles uncommon-looking but
-   valid paths such as `PascalCase` module names while preserving nested type structure.
-2. **Refactoring-safe names with IDE support.** Macros accept ordinary Rust identifiers and
-   paths, so rename refactors and code completion continue to work at each call site.
-3. **Compile-time validation.** Misspelled bindings, functions, types, fields, methods, and
-   variants are compiler errors rather than stale strings discovered at runtime.
-4. **One naming toolkit.** Name local values, constants, statics, free functions, types,
-   fields, associated constants and functions, methods, and unit or tuple enum variants.
-5. **Resolved generics, qualified paths, and `Self`.** Type-bearing positions use compiler
-   resolution, including aliases, renamed imports, bounded generic parameters, and `Self`
-   inside `impl` blocks.
-6. **Deferred, local formatting.** Every operation returns a lazily formatted value,
-   constructed without allocation or global state and rendered only when needed.
+`pretty-name` structurally shortens compiler-resolved type names. Its naming macros accept
+ordinary Rust syntax, so the compiler and IDE can validate and refactor their references. The
+returned values implement `Display` and are intended for diagnostics and other human-readable
+output—not stable type identifiers or serialization keys.
 
 ## Quick start
 
@@ -40,189 +27,200 @@ Or run:
 cargo add pretty-name
 ```
 
-## Usage
+`pretty-name` requires `std`. Then format names like any other `Display` value:
 
-Every operation returns a value implementing `Display`. Keep it for deferred formatting,
-format it with `{}`, pass it through an `impl Display` API, or explicitly materialize a
-`String` with `.to_string()`.
+```rust
+use pretty_name::{nameof, type_name_of_val};
 
-1. **Name a type with `type_name::<T>()` or `nameof_type!(T)`.** `type_name` is a
-   human-friendly counterpart to `std::any::type_name`: it returns the compiler-resolved type
-   description with module qualification removed. `nameof_type!` provides equivalent macro
-   syntax. Both resolve aliases, renamed imports, generic parameters, and `Self` through the
-   compiler.
+let numbers = vec![1_i32, 2, 3];
 
-   ```rust
-   use pretty_name::{nameof_type, type_name};
-   use std::collections::HashMap;
+assert_eq!(type_name_of_val(&numbers).to_string(), "Vec<i32>");
+assert_eq!(nameof!(numbers).to_string(), "numbers");
+```
 
-   let _ = type_name::<HashMap<String, i32>>();
-   // -> "HashMap<String, i32>"
+The examples call `.to_string()` only to make the output easy to assert. You can keep the
+returned value for deferred formatting or pass it directly to an API accepting `impl Display`.
 
-   // Qualified paths produce the same shortened output.
-   let _ = type_name::<std::collections::HashMap<std::string::String, i32>>();
-   // -> "HashMap<String, i32>"
+## Why use `pretty-name`?
 
-   let _ = nameof_type!(HashMap<String, i32>);
-   // -> "HashMap<String, i32>"
-   ```
+1. **Grammar-aware type shortening.** Compiler type descriptions are parsed as Rust syntax
+   with [`syn`](https://docs.rs/syn) before module qualification is removed. Nested type
+   structure is preserved, even when valid paths do not follow conventional casing.
+2. **Compiler-checked names.** Misspelled bindings, functions, types, fields, methods, and
+   variants fail to compile instead of becoming stale strings at runtime.
+3. **Refactoring and IDE support.** Macros accept ordinary Rust identifiers and paths, so
+   rename refactors and code completion continue to work at each call site.
+4. **One API family for common nameable items.** The crate covers local values, constants,
+   statics, free functions, types, fields, associated items, methods, and unit or tuple enum
+   variants.
+5. **Deferred, local formatting.** Constructing a name does not allocate or use global state.
+   Formatting a type may allocate while parsing and rendering it.
 
-2. **Name the type of a value with `type_name_of_val(&value)`.** This is the
-   human-friendly counterpart to `std::any::type_name_of_val`. It inspects the referenced
-   value's type without adding another reference layer to the displayed name.
+## API at a glance
 
-   ```rust
-   use pretty_name::type_name_of_val;
+| API | Names | Example output |
+| --- | --- | --- |
+| `type_name::<T>()` | A compiler-resolved type | `HashMap<String, i32>` |
+| `nameof_type!(T)` | A compiler-resolved type, using macro syntax | `HashMap<String, i32>` |
+| `type_name_of_val(&value)` | The compiler-resolved type of a value | `Vec<i32>` |
+| `nameof!(path)` | A binding, constant, static, or free function | `std::f32::consts::PI` |
+| `nameof_member!(Owner::member)` | An associated item, method, or unit or tuple variant | `String::with_capacity` |
+| `nameof_field!(Owner::field)` | A named instance field | `Range<u32>::start` |
 
-   let numbers = vec![1_i32, 2, 3];
-   let _ = type_name_of_val(&numbers);
-   // -> "Vec<i32>"
-   ```
+Every API returns a value implementing `Display`. `type_name::<T>()` and `nameof_type!(T)`
+produce equivalent names; use whichever form reads better at the call site.
 
-3. **Name a binding, constant, static, or free function with `nameof!(path)`.** The lexical
-   value path is preserved, including module aliases and a leading `::`, while explicit
-   generic arguments are shortened to their compiler-resolved type names.
+## Naming types
 
-   ```rust
-   use pretty_name::nameof;
+`type_name::<T>()` is a human-friendly counterpart to `std::any::type_name`. It uses the
+compiler-resolved type—including aliases, renamed imports, bounded generic parameters, and
+`Self` inside `impl` blocks—then removes module qualification structurally.
 
-   let numbers = vec![1_i32, 2, 3];
-   let _ = nameof!(numbers);
-   // -> "numbers"
+```rust
+use pretty_name::{nameof_type, type_name};
+use std::collections::HashMap;
 
-   let _ = nameof!(std::f32::consts::PI);
-   // -> "std::f32::consts::PI"
+assert_eq!(
+    type_name::<HashMap<String, i32>>().to_string(),
+    "HashMap<String, i32>");
 
-   let _ = nameof!(std::array::from_mut::<u32>);
-   // -> "std::array::from_mut<u32>"
-   ```
+// Qualified paths produce the same shortened output.
+assert_eq!(
+    type_name::<std::collections::HashMap<std::string::String, i32>>().to_string(),
+    "HashMap<String, i32>");
 
-4. **Name an associated constant, associated function, method, or unit or tuple enum variant
-   with `nameof_member!(Owner::member)`.** The owner is compiler-resolved and formatted as a
-   type. A single-identifier owner uses the compact form; qualified or generic owners must
-   make their boundary explicit with `<...>`. The angle wrapper and source turbofish are
-   omitted from the displayed output.
+assert_eq!(
+    nameof_type!(HashMap<String, i32>).to_string(),
+    "HashMap<String, i32>");
+```
 
-   ```rust
-   use pretty_name::nameof_member;
+`type_name_of_val(&value)` is the corresponding operation for a value. It inspects the
+referenced value's type without adding another reference layer to the displayed name. The
+returned name does not retain the input borrow and may outlive the value.
 
-   let _ = nameof_member!(u32::MAX);
-   // -> "u32::MAX"
+```rust
+use pretty_name::type_name_of_val;
 
-   let _ = nameof_member!(String::with_capacity);
-   // -> "String::with_capacity"
+let numbers = vec![1_i32, 2, 3];
+assert_eq!(type_name_of_val(&numbers).to_string(), "Vec<i32>");
+```
 
-   let _ = nameof_member!(<std::vec::Vec<String>>::push);
-   // -> "Vec<String>::push"
+## Naming values and functions
 
-   let _ = nameof_member!(<Option<u32>>::None);
-   // -> "Option<u32>::None"
-   let _ = nameof_member!(<Option<u32>>::Some);
-   // -> "Option<u32>::Some"
-   ```
+Use `nameof!(path)` for a local binding, constant, static, or free function. It preserves the
+value path as written, including module aliases and a leading `::`. Explicit generic arguments
+are displayed using their shortened, compiler-resolved type names.
 
-5. **Name an instance field with `nameof_field!(Owner::field)`.** The macro validates the
-   field through field-access syntax, then displays its compiler-resolved owner and field
-   name. Qualified or generic owners use the same `<...>` boundary as `nameof_member!`.
+```rust
+use pretty_name::nameof;
 
-   ```rust
-   use pretty_name::nameof_field;
+let numbers = vec![1_i32, 2, 3];
 
-   let _ = nameof_field!(<std::ops::Range<u32>>::start);
-   // -> "Range<u32>::start"
-   ```
+assert_eq!(nameof!(numbers).to_string(), "numbers");
+assert_eq!(
+    nameof!(std::f32::consts::PI).to_string(),
+    "std::f32::consts::PI");
+assert_eq!(
+    nameof!(std::array::from_mut::<u32>).to_string(),
+    "std::array::from_mut<u32>");
+```
 
-## Behavior
+## Naming members and fields
+
+Use `nameof_member!(Owner::member)` for an associated constant, associated function, method,
+or unit or tuple enum variant. The owner is compiler-resolved and displayed as a shortened
+type.
+
+```rust
+use pretty_name::nameof_member;
+
+assert_eq!(nameof_member!(u32::MAX).to_string(), "u32::MAX");
+assert_eq!(
+    nameof_member!(<std::vec::Vec<String>>::push).to_string(),
+    "Vec<String>::push");
+assert_eq!(
+    nameof_member!(<Option<u32>>::Some).to_string(),
+    "Option<u32>::Some");
+```
+
+A single-identifier owner uses the compact `Owner::member` form. A qualified or generic owner
+must make its boundary explicit as `<Owner>::member`. The angle brackets and any source
+turbofish are omitted from the displayed name.
+
+Use `nameof_field!(Owner::field)` for a named instance field. It uses the same owner syntax and
+validates the field through ordinary field-access syntax.
+
+```rust
+use pretty_name::nameof_field;
+
+assert_eq!(
+    nameof_field!(<std::ops::Range<u32>>::start).to_string(),
+    "Range<u32>::start");
+```
+
+Trait-provided methods can be named through a concrete implementor or a bounded type parameter
+such as `T::method`. Inside an `impl` block, macros resolve `Self` to the concrete type.
+
+## How names are formatted
 
 ### Type formatting is structural
 
 For valid Rust type descriptions, module qualification is removed from the parsed syntax tree
-rather than guessed from identifier casing or punctuation. Formatting preserves:
-
-1. References, compiler-emitted lifetimes, mutability, and raw-pointer qualifiers.
-2. Arrays, slices, tuple arity, grouping, and parentheses.
-3. Function qualifiers, ABI, arguments, and return types.
-4. Trait bounds and associated-type bindings.
-5. Generic type and const arguments, including nested types.
-6. Qualified-self and other non-module type structure.
+rather than guessed from identifier casing or punctuation. Formatting preserves references,
+lifetimes, pointers, arrays, slices, tuples, function signatures, trait bounds, associated-type
+bindings, generic type and const arguments, and qualified-self structure.
 
 For example, `std::collections::HashMap<std::string::String, crate::Record>` becomes
-`HashMap<String, Record>` without discarding the surrounding generic structure. If parsing or
-transformation cannot be completed confidently—as with some closure and async-block
-descriptions—the entire compiler description is returned unchanged.
+`HashMap<String, Record>` without discarding the surrounding generic structure. If a compiler
+description cannot be parsed or transformed confidently—as can happen with closure and
+async-block descriptions—the complete original description is returned unchanged.
 
-### Source paths and resolved types stay distinct
+### Item paths are lexical; type positions are resolved
 
 `nameof!` preserves the value path written at the call site, so renamed value and module
 imports remain visible. Type-bearing positions use compiler-resolved descriptions, so type
-aliases and renamed type imports are transparent. Explicit generic arguments are therefore
-shortened as their resolved types even when the surrounding function path remains lexical.
+aliases and renamed type imports are transparent. This is why an explicit generic argument is
+shortened as a resolved type even though its surrounding function path remains lexical.
 
-Macros resolve `Self` to the concrete type inside `impl` blocks. Trait-provided methods can be
-named through a concrete implementor or a bounded type parameter such as `T::method`.
+## Validation and runtime behavior
 
-### Values implement `Display`
+Supported macros pair captured identifiers with ordinary Rust expressions that resolve and
+type-check the referenced path, owner, field, member, and explicit arguments. Syntax,
+name-resolution, privacy, and type errors therefore remain compile-time errors.
 
-Every operation produces a value implementing `Display`. The concrete return types,
-representations, sizes, and additional trait implementations are not part of the compatibility
-contract. Callers can keep an inferred value, pass it through an `impl Display` API, or
-materialize a `String` with `.to_string()`. A value returned by `type_name_of_val` does not
-retain the input borrow and may outlive the inspected value.
+Validation expressions live in uncalled closures. Creating a name does not call a function or
+method or otherwise evaluate the referenced item. Validating a local value may establish a
+temporary shared closure capture for borrow checking, but does not execute user code.
 
-## Guarantees
+Generated validation locally allows warnings so incidental warnings, including deprecation,
+do not become errors under a downstream `deny(warnings)` policy. Command-line force-warn policy
+remains authoritative.
 
-### Referenced items are compiler-validated
+Constructing a name does not allocate or consult a process-wide cache. Formatting a type may
+allocate while parsing and rendering it, and formatting the same value repeatedly may repeat
+that work. The crate requires `std`.
 
-Every supported macro form pairs captured identifiers with ordinary Rust syntax that resolves
-and type-checks the referenced path, owner, field, member, and explicit arguments. Misspelled
-or semantically invalid inputs therefore remain compile-time errors.
+Only the `Display` behavior is part of the return-value contract. Concrete return types,
+representations, sizes, and additional trait implementations may change between releases.
 
-### Validation does not execute user code
+## Limitations
 
-Every validation expression lives in an uncalled closure. Constructing a name does not call a
-function or method, read an associated value, access a field, construct a variant, invoke
-`Deref`, or run a destructor. Local-value validation may establish a temporary shared closure
-capture for borrow checking, but it invokes no user code.
-
-### Downstream lint policy is isolated
-
-Macro-generated validation locally allows warnings so incidental validation warnings,
-including deprecation, do not become errors under a downstream `deny(warnings)` policy.
-Syntax, name-resolution, privacy, and type errors remain compiler errors, and command-line
-force-warn policy remains authoritative.
-
-### Construction avoids allocation and global state
-
-Explicit generic arguments are stored in a fixed-size inline array, so constructing a name
-does not allocate or consult a process-wide cache. Formatting a type may allocate while
-parsing and rendering it, repeated formatting may repeat that work, and writes use the
-caller-provided formatter.
-
-## Limitations and non-guarantees
-
-1. **Names are diagnostic presentation, not identity.** Rust does not guarantee that compiler
-   type names are unique or stable between compiler versions. Shortening can also make
-   different resolved types display alike. Do not use these names as persistent identifiers
-   or serialization keys.
-2. **Generic values and members require complete, concrete type arguments.** Every
-   caller-provided generic argument must be written explicitly as a type. Inferred arguments,
-   omitted or partial argument lists, direct const arguments, and the legacy `::<..>`
-   placeholder are unsupported. Const arguments nested inside a resolved type remain
-   supported.
+1. **Names are presentation, not identity.** Compiler type names are not guaranteed to be
+   unique or stable between Rust versions, and shortening can make different resolved types
+   look alike. Do not use these names as persistent identifiers or serialization keys.
+2. **Generic values and members require complete type arguments.** Every caller-provided
+   generic argument must be written explicitly as a type. Inferred, omitted, or partial
+   argument lists, direct const arguments, and the legacy `::<..>` placeholder are unsupported.
+   Const arguments nested inside a resolved type remain supported.
 3. **Owners must be named type paths.** Anonymous owner types and qualified-self owner paths
    are unsupported. A bare trait declaration is not a resolved owner; use a concrete
    implementor or bounded type parameter.
 4. **Struct variants are unsupported.** Unit variants and tuple-variant constructors are
-   first-class values and work with `nameof_member!`; struct variant paths are not first-class
-   values on stable Rust, which cannot validate them through the same member-resolution
-   contract.
+   first-class values and work with `nameof_member!`. Struct variant paths are not first-class
+   values on stable Rust and cannot use the same validation contract.
 5. **Qualified ordinary value paths must be importable.** This keeps type-associated paths
    such as `Type::function` out of `nameof!`; use `nameof_member!` for associated items and
    variants.
-6. **Implementation wrappers are unstable.** The public, doc-hidden `pretty_name::__` module
-   must exist for exported macros. Advanced callers may use `TypeName` and `ItemName` directly
-   as formatting primitives, including to simplify arbitrary compiler-style descriptions,
-   but the module and its concrete types are excluded from compatibility guarantees.
 
 ## Comparison with similar crates
 
@@ -231,20 +229,17 @@ schema names, or minimum runtime and dependency cost:
 
 | Tool | Best fit | Important trade-off |
 | --- | --- | --- |
-| `pretty-name` | One call-site API for resolved types and validated values, functions, fields, methods, associated items, and variants | Uses `syn`, `quote`, and `prettyplease`; type formatting may allocate, and the crate targets `std`. In return, shortening follows Rust's type grammar and unfamiliar descriptions fall back unchanged. |
-| [`nameof`](https://docs.rs/nameof) | Small, dependency-free macros for unqualified binding, type, field, function, and associated-constant names | Returns source-like unqualified names and has a narrower item model; it does not provide structural shortening of compiler-resolved composite types. |
-| [`disqualified`](https://docs.rs/disqualified) | Lazy, allocation-free, `no_std` shortening of type names | Its text scanner deliberately uses an uppercase-segment heuristic to retain enum owners. A PascalCase module segment can therefore be mistaken for a type or variant owner; it also does not name arbitrary call-site items. |
-| [`named_type`](https://docs.rs/named_type) with [`named_type_derive`](https://docs.rs/named_type_derive) | Generated full and short names for structs and enums you control, including configurable short-name prefixes and suffixes | Requires deriving on the named type and does not cover values, functions, fields, methods, or arbitrary composite types at call sites. |
-| [`field_name`](https://docs.rs/field_name) | Generated field and variant constants, complete name arrays, and schema-oriented rename or skip attributes | Requires annotating structs or enums you control; it is aimed at schema metadata rather than general type and item diagnostics. |
+| `pretty-name` | Compiler-checked names for resolved types and a broad set of call-site items | Uses `syn`, `quote`, and `prettyplease`, requires `std`, and may allocate while formatting types. In return, shortening follows Rust's grammar and unfamiliar descriptions fall back unchanged. |
+| [`nameof`](https://docs.rs/nameof) | Small, dependency-free macros for unqualified item names | Has a narrower item model and does not structurally shorten compiler-resolved composite types. |
+| [`disqualified`](https://docs.rs/disqualified) | Lazy, allocation-free, `no_std` type-name shortening | Uses an uppercase-segment heuristic, so unconventional module casing can affect its output; it does not name arbitrary call-site items. |
+| [`named_type`](https://docs.rs/named_type) with [`named_type_derive`](https://docs.rs/named_type_derive) | Generated names for structs and enums you control | Requires a derive and does not cover values, functions, fields, methods, or arbitrary composite types. |
+| [`field_name`](https://docs.rs/field_name) | Generated field and variant constants for schema metadata | Requires annotating types you control and targets schema metadata rather than general diagnostics. |
 
-In particular, `pretty-name` chooses syntax-aware correctness over the casing conventions
-assumed by many lightweight shorteners. Rust normally uses `snake_case` modules and
-`PascalCase` types, but those conventions are linted rather than grammatical requirements;
-parsing the type prevents valid naming choices from changing the result.
+## Migrating from 0.5
 
-## Pre-1.0 Compatibility
-
-`pretty-name@1.0.0` has been fully rewritten from the pre-1.0 `pretty-name@0.5.0` crate. The new version is a complete redesign with a different API and implementation. It is not compatible with the pre-1.0 version and manual migration is required. The pre-1.0 version is still available on [crates.io](https://crates.io/crates/pretty-name/0.5.0).
+Version 1.0 is a complete redesign and is not API-compatible with `pretty-name` 0.5. Migrating
+from 0.5 requires manual changes. The earlier release remains available on
+[crates.io](https://crates.io/crates/pretty-name/0.5.0).
 
 ## License
 
